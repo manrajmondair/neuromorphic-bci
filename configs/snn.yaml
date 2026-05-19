@@ -1,0 +1,17 @@
+# Sparse spike-latency SNN decoder.
+extends: default.yaml
+
+model:
+  name: snn
+  hidden_dim: 128
+  beta: 0.9
+  threshold: 1.0
+  readout_alpha: 1.0
+
+training:
+  epochs: 30
+  batch_size: 64
+  lr: 1.0e-3
+
+output:
+  results_csv: results/snn/results.csv

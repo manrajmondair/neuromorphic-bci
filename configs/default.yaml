@@ -1,0 +1,17 @@
+# Shared defaults — overrides go in ridge.yaml / snn.yaml.
+dataset:
+  name: NLB_MC_RTT
+  raw_dir: data/raw
+  processed_path: data/processed/mc_rtt.npz
+
+preprocessing:
+  bin_size_ms: 50
+  split_fracs: [0.70, 0.15, 0.15]
+
+experiment:
+  event_budgets: [1.00, 0.50, 0.25, 0.10]
+  seeds: [0, 1, 2]
+
+paths:
+  results_dir: results
+  figures_dir: results/figures
