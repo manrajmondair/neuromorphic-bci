@@ -45,7 +45,7 @@ def main() -> None:
                     "notes": "",
                 },
             )
-            print(f"snn f={f:.2f} seed={seed} r2_mean={r2['r2_mean']:.4f}")
+            print(f"snn f={f:.2f} seed={seed} r2_joint={r2['r2_joint']:.4f}")
 
             et_s, en_s = shuffle_within_bin_order(et, en, seed=seed)
             snn_s = SparseLatencySNN(num_neurons=num_neurons, seed=seed).fit(
@@ -65,7 +65,7 @@ def main() -> None:
                     "notes": "within-bin order permuted",
                 },
             )
-            print(f"snn_shuffle f={f:.2f} seed={seed} r2_mean={r2_s['r2_mean']:.4f}")
+            print(f"snn_shuffle f={f:.2f} seed={seed} r2_joint={r2_s['r2_joint']:.4f}")
 
 
 if __name__ == "__main__":

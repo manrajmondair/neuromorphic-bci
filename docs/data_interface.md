@@ -46,15 +46,40 @@ Every experiment writes one row per (model, event_budget, seed) to a CSV in
 `results/{model}/results.csv`:
 
 ```
-model,event_budget,seed,r2_vx,r2_vy,r2_mean,n_events_used,n_events_total,notes
-ridge,1.00,0,0.412,0.388,0.400,123456,123456,
-ridge,0.50,0,0.361,0.342,0.351,61728,123456,
+model,event_budget,seed,r2_vx,r2_vy,r2_joint,n_events_used,n_events_total,notes
+ridge,1.00,0,0.412,0.388,0.401,123456,123456,
+ridge,0.50,0,0.361,0.342,0.352,61728,123456,
 snn,1.00,0,0.378,0.351,0.365,123456,123456,
 snn_shuffle,0.50,0,0.198,0.182,0.190,61728,123456,within-bin order permuted
 ```
 
-`r2_mean = (r2_vx + r2_vy) / 2`. `n_events_used` and `n_events_total` are
-secondary efficiency reporting. Use exactly these column names.
+`r2_joint` is the joint formula from proposal §4.1:
+`R² = 1 - Σ_t ||v_t - v̂_t||² / Σ_t ||v_t - v̄||²` (sum runs over both axes).
+`r2_vx` and `r2_vy` are the per-axis decompositions, kept for
+interpretability. `n_events_used` and `n_events_total` are secondary
+efficiency reporting. Use exactly these column names.
+
+In addition to the CSV, each model writes a canonical JSON tracking file
+at `results/{model}/{model}_results.json`:
+
+```json
+{
+  "model": "ridge",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": { "bin_size_ms": 50, "event_budgets": [...], "seeds": [...], ... },
+  "results": [
+    {"model": "ridge", "event_budget": 1.00, "seed": 0,
+     "r2_vx": 0.412, "r2_vy": 0.388, "r2_joint": 0.401,
+     "best_alpha": 1.0, "n_events_used": 123456, "n_events_total": 123456,
+     "notes": ""}
+  ]
+}
+```
+
+The JSON is what `scripts/make_figures.py` reads to draw the headline
+accuracy-efficiency frontier. Use this exact schema for both ridge and
+SNN runs so curves overlay automatically.
 
 ## Velocity computation
 
