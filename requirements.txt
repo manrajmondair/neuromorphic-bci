@@ -18,3 +18,6 @@ torch>=2.1
 # upstream pins pandas<=1.3.4 even though only basic DataFrame ops are used.
 # See docs/dataset.md for the two-line install.
 dandi>=0.59
+
+# Tests (smoke + invariant checks under tests/).
+pytest>=8.0
