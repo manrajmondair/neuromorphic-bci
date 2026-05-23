@@ -73,6 +73,12 @@ def main() -> int:
     logging.basicConfig(level=args.log_level, format=LOG_FORMAT, stream=sys.stdout)
 
     data = load_processed(args.processed_path)
+    # Fresh CSV per invocation. append_result streams rows as they finish so
+    # partial progress survives a crash, but the previous run's rows should
+    # not survive into this one.
+    if args.results_csv.exists():
+        args.results_csv.unlink()
+
     train_idx = data["train_idx"]
     val_idx = data["val_idx"]
     test_idx = data["test_idx"]

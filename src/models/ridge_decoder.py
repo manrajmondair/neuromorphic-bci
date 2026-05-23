@@ -12,7 +12,7 @@ during alpha selection.
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 from sklearn.linear_model import Ridge
@@ -49,7 +49,7 @@ class RidgeDecoder:
         y_train: np.ndarray,
         X_val: np.ndarray | None = None,
         y_val: np.ndarray | None = None,
-    ) -> "RidgeDecoder":
+    ) -> RidgeDecoder:
         """Fit the decoder, optionally selecting alpha on a validation set.
 
         If `alphas` was provided to `__init__`, X_val and y_val are required

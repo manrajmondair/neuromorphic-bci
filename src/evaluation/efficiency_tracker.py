@@ -28,7 +28,8 @@ What this module computes:
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 def dense_macs_per_prediction(num_neurons: int, num_outputs: int = 2) -> int:
     """MACs for one dense ridge prediction: ŷ = X @ W + b on X ∈ R^(1 × N)."""
     if num_neurons <= 0 or num_outputs <= 0:
-        raise ValueError(f"num_neurons and num_outputs must be positive")
+        raise ValueError("num_neurons and num_outputs must be positive")
     return int(num_neurons * num_outputs)
 
 
