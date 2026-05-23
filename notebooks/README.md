@@ -1,13 +1,11 @@
 # Notebooks
 
-Per-stage exploration notebooks. Owned by the branch that owns the
-corresponding `src/` module.
+Notebooks call into `src/` — they do not reimplement decoding logic inline.
 
-| Notebook | Owner |
-|---|---|
-| `01_data_exploration.ipynb` | data-ridge-baseline |
-| `02_ridge_baseline.ipynb` | data-ridge-baseline |
-| `03_latency_features.ipynb` | snn-latency-decoder |
-| `04_snn_decoder.ipynb` | snn-latency-decoder |
+| Notebook | Purpose | Owner |
+|---|---|---|
+| `02_ridge_baseline_colab.ipynb` | End-to-end ridge baseline on a Colab GPU with closed-form vectorized alpha sweep over ~1000 regularizers | `data-ridge-baseline` |
 
-Notebooks should call into `src/`. Don't reimplement decoding logic inline.
+Additional per-stage exploration notebooks can be added under either
+branch's ownership without coordination — they should never modify the
+shared interfaces in `docs/data_interface.md` or `src/evaluation/metrics.py`.

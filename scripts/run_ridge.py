@@ -36,7 +36,12 @@ LOG_FORMAT = "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s"
 logger = logging.getLogger("run_ridge")
 
 EVENT_BUDGETS_DEFAULT = (1.00, 0.50, 0.25, 0.10)
-SEEDS_DEFAULT = (0, 1, 2)
+# Ridge is closed-form on a deterministic train/val/test split and the
+# event-budget filter keeps the earliest fraction (also deterministic),
+# so multiple seeds produce identical results. We keep `seeds` as a CLI
+# knob for future stochastic experiments (e.g. random alpha grids,
+# bootstrap CIs) but default to one seed to avoid noise-free duplication.
+SEEDS_DEFAULT = (0,)
 
 
 def parse_args() -> argparse.Namespace:

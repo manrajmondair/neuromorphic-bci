@@ -5,14 +5,16 @@ pandas>=2.0
 matplotlib>=3.7
 pyyaml>=6.0
 h5py>=3.9
+pynwb>=2.5
 tqdm>=4.65
 jupyter>=1.0
 ipykernel>=6.25
 
-# SNN side — partner picks one; both work with the same data interface
+# SNN side — partner picks one; both work with the same data interface.
 snntorch>=0.7
 torch>=2.1
 
-# NLB dataset tooling
-nlb-tools>=0.0.4
+# Dataset access. `nlb_tools` is installed separately with --no-deps because
+# upstream pins pandas<=1.3.4 even though only basic DataFrame ops are used.
+# See docs/dataset.md for the two-line install.
 dandi>=0.59

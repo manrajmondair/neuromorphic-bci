@@ -241,28 +241,3 @@ def plot_qualitative_trajectories(
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     logger.info("wrote %s (dpi=%d, %d models)", out_path, dpi, n_models)
-
-
-# Back-compat shim for scripts that still call the original name.
-def plot_r2_vs_event_budget(results_csv: Path, out_path: Path) -> None:
-    """Deprecated: prefer plot_accuracy_efficiency_frontier with JSON inputs."""
-    import pandas as pd
-
-    df = pd.read_csv(results_csv)
-    fig, ax = plt.subplots(figsize=(6, 4))
-    metric = "r2_joint" if "r2_joint" in df.columns else "r2_mean"
-    for model, sub in df.groupby("model"):
-        agg = sub.groupby("event_budget")[metric].agg(["mean", "std"]).reset_index()
-        ax.errorbar(
-            agg["event_budget"], agg["mean"], yerr=agg["std"], label=model, marker="o"
-        )
-    ax.set_xlabel("Event budget f")
-    ax.set_ylabel(f"Velocity R² ({metric})")
-    ax.set_title("Decoding accuracy vs. sparse event budget")
-    ax.invert_xaxis()
-    ax.legend()
-    fig.tight_layout()
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=200)
-    plt.close(fig)
