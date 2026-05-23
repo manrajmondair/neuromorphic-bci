@@ -46,24 +46,50 @@ def main() -> int:
     args.raw_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        import dandi
         from dandi.download import download
     except ImportError as e:
         logger.error("dandi package not installed in this interpreter: %s", e)
         logger.error("install via `pip install -r requirements.txt`")
         return 1
 
-    dandi_url = f"https://dandiarchive.org/dandiset/{DANDISET_ID}/{args.version}"
-    logger.info("downloading %s into %s ...", dandi_url, args.raw_dir)
-    download(dandi_url, output_dir=str(args.raw_dir))
+    logger.info("dandi %s, raw_dir=%s", getattr(dandi, "__version__", "?"), args.raw_dir)
 
-    files = sorted(args.raw_dir.rglob("*.nwb"))
-    if not files:
-        logger.error("download finished but no .nwb files appeared under %s", args.raw_dir)
-        return 1
-    for f in files:
-        logger.info("  %s (%.1f MB)", f, f.stat().st_size / 1e6)
-    logger.info("done. next step: python scripts/preprocess_mc_rtt.py")
-    return 0
+    # The short form `DANDI:{id}/{version}` is the stable input across recent
+    # dandi releases; positional args also work everywhere that the function
+    # exists. Try short form first, then fall back to the long web URL.
+    candidate_urls = [
+        f"DANDI:{DANDISET_ID}/{args.version}",
+        f"https://dandiarchive.org/dandiset/{DANDISET_ID}/{args.version}",
+    ]
+    last_error: Exception | None = None
+    for url in candidate_urls:
+        logger.info("downloading %s into %s ...", url, args.raw_dir)
+        try:
+            download(url, str(args.raw_dir))
+        except TypeError:
+            # Some intermediate versions used a keyword-only output_dir.
+            download(url, output_dir=str(args.raw_dir))
+        except Exception as e:  # noqa: BLE001
+            last_error = e
+            logger.warning("download attempt with %s failed: %s", url, e)
+            continue
+
+        files = sorted(args.raw_dir.rglob("*.nwb"))
+        if files:
+            for f in files:
+                logger.info("  %s (%.1f MB)", f, f.stat().st_size / 1e6)
+            logger.info("done. next step: python scripts/preprocess_mc_rtt.py")
+            return 0
+        logger.warning("download(%s) returned without writing .nwb files", url)
+
+    logger.error(
+        "no .nwb file under %s after %d attempts; last error: %s",
+        args.raw_dir,
+        len(candidate_urls),
+        last_error,
+    )
+    return 1
 
 
 if __name__ == "__main__":
