@@ -23,7 +23,7 @@ array is visible in the script's stdout.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +50,7 @@ class PreprocessConfig:
     boundary_gap: int = 1
     velocity_mode: str = "central"
     behavior_signal: str = "cursor_pos"
+    velocity_smooth_sigma_bins: float = 1.0
 
     def __post_init__(self) -> None:
         if self.bin_size_ms <= 0:
@@ -58,6 +59,10 @@ class PreprocessConfig:
             raise ValueError(f"split_fracs must sum to 1.0, got {self.split_fracs}")
         if self.velocity_mode not in {"central", "forward"}:
             raise ValueError(f"velocity_mode must be 'central' or 'forward', got {self.velocity_mode}")
+        if self.velocity_smooth_sigma_bins < 0:
+            raise ValueError(
+                f"velocity_smooth_sigma_bins must be >= 0, got {self.velocity_smooth_sigma_bins}"
+            )
 
 
 # -------------------------------------------------------------------------
@@ -77,6 +82,54 @@ def _pull_signal(dataset: Any, name: str) -> np.ndarray | None:
     if arr.ndim == 1:
         arr = arr[:, None]
     return arr
+
+
+def _clean_spike_matrix(spikes: np.ndarray) -> np.ndarray:
+    """Coerce the raw NLB spike matrix into well-typed non-negative integer counts.
+
+    `nlb_tools` returns spikes as float with occasional NaN entries (held-out
+    channels in some bins). Direct int32 cast on NaN is undefined and triggers
+    a RuntimeWarning, so we replace non-finite with 0 and clip negatives
+    before casting.
+    """
+    if not np.issubdtype(spikes.dtype, np.floating) and not np.issubdtype(spikes.dtype, np.integer):
+        raise TypeError(f"spike matrix has unexpected dtype {spikes.dtype}")
+    n_bad = 0
+    if np.issubdtype(spikes.dtype, np.floating):
+        bad = ~np.isfinite(spikes)
+        n_bad = int(bad.sum())
+        if n_bad:
+            spikes = np.where(bad, 0.0, spikes)
+    spikes = np.clip(spikes, 0, None)
+    cleaned = spikes.astype(np.int32, copy=False)
+    if n_bad:
+        logger.info("spike matrix: replaced %d non-finite entries with 0 before int32 cast", n_bad)
+    return cleaned
+
+
+def _interpolate_nan_inplace(arr: np.ndarray) -> int:
+    """Replace NaN/Inf entries in a [T, C] trace with linear interpolation along T.
+
+    Returns the count of bad samples replaced (summed across all columns).
+    Edge NaNs are filled by edge propagation. Operates in place.
+    """
+    if arr.ndim != 2:
+        raise ValueError(f"expected 2-D [T, C] trace, got shape {arr.shape}")
+    bad_total = 0
+    T = arr.shape[0]
+    for c in range(arr.shape[1]):
+        col = arr[:, c]
+        bad = ~np.isfinite(col)
+        n_bad = int(bad.sum())
+        if n_bad == 0:
+            continue
+        if n_bad == T:
+            raise ValueError(f"cursor column {c} is entirely non-finite — cannot interpolate")
+        good_idx = np.flatnonzero(~bad)
+        bad_idx = np.flatnonzero(bad)
+        col[bad_idx] = np.interp(bad_idx, good_idx, col[good_idx])
+        bad_total += n_bad
+    return bad_total
 
 
 def _extract_spike_events(
@@ -128,7 +181,12 @@ def _extract_spike_events(
 
     event_times: list[np.ndarray] = []
     event_neurons: list[np.ndarray] = []
-    eps = 1e-6  # microsecond-scale jitter for strict monotonic ordering
+    # Sub-resolution jitter applied to break exact-tie spike times so the
+    # strict-monotonic invariant survives the float32 cast. Float32 has ~7
+    # significant digits, so at a 50 ms bin the smallest reliably-representable
+    # step is ~5e-6 ms. We use 1e-4 ms (0.1 µs), comfortably above that and
+    # still far below the native 1 ms sampling resolution.
+    eps = 1e-4
 
     for t in range(num_bins):
         bin_block = reshaped[t]  # [bins_per_target, N]
@@ -161,7 +219,6 @@ def _extract_spike_events(
         order = np.argsort(times, kind="stable")
         times_sorted = times[order]
         neurs_sorted = neurs[order]
-        # Strict-monotonic tiebreak: nanosecond-scale jitter by within-bin index
         if times_sorted.size > 1:
             times_sorted = times_sorted + eps * np.arange(times_sorted.size, dtype=np.float64)
         event_times.append(times_sorted.astype(np.float32))
@@ -218,12 +275,19 @@ def _compute_velocity(
     cursor_pos: np.ndarray,
     bin_size_ms: int,
     mode: str = "central",
+    smooth_sigma_bins: float = 1.0,
 ) -> np.ndarray:
     """Finite-difference velocity at each bin in units / second.
 
     `central`: v[t] = (pos[t+1] - pos[t-1]) / (2 * dt) for interior bins;
                one-sided forward/backward at the very first/last bin.
     `forward`: v[t] = (pos[t+1] - pos[t]) / dt; last bin repeats v[-2].
+
+    `smooth_sigma_bins` applies a 1-D Gaussian along the time axis to the
+    velocity trace before it leaves this function. Standard BCI practice
+    smooths the velocity target with sigma ~25–50 ms to suppress the
+    sample-by-sample noise that finite differences amplify. Pass 0.0 to
+    disable smoothing.
     """
     if cursor_pos.shape[1] != 2:
         raise ValueError(f"cursor_pos must have 2 cols, got shape {cursor_pos.shape}")
@@ -242,10 +306,16 @@ def _compute_velocity(
         v[:-1] = (cursor_pos[1:] - cursor_pos[:-1]) / dt_s
         v[-1] = v[-2]
 
+    if smooth_sigma_bins > 0:
+        from scipy.ndimage import gaussian_filter1d
+
+        v = gaussian_filter1d(v, sigma=smooth_sigma_bins, axis=0, mode="nearest").astype(np.float32)
+
     speed = np.linalg.norm(v, axis=1)
     logger.info(
-        "velocity (%s diff): shape=%s dtype=%s mean|v|=%.4f max|v|=%.4f any_nan=%s",
+        "velocity (%s diff, sigma=%.2f bins): shape=%s dtype=%s mean|v|=%.4f max|v|=%.4f any_nan=%s",
         mode,
+        smooth_sigma_bins,
         v.shape,
         v.dtype,
         float(speed.mean()),
@@ -310,6 +380,7 @@ def preprocess_mc_rtt(
     boundary_gap: int = 1,
     velocity_mode: str = "central",
     behavior_signal: str = "cursor_pos",
+    velocity_smooth_sigma_bins: float = 1.0,
     seed: int = 0,  # noqa: ARG001 — kept for API stability; split is deterministic
 ) -> dict[str, Any]:
     """End-to-end preprocessing — see module docstring for the full pipeline."""
@@ -320,6 +391,7 @@ def preprocess_mc_rtt(
         boundary_gap=boundary_gap,
         velocity_mode=velocity_mode,
         behavior_signal=behavior_signal,
+        velocity_smooth_sigma_bins=velocity_smooth_sigma_bins,
     )
 
     logger.info("=" * 72)
@@ -337,7 +409,7 @@ def preprocess_mc_rtt(
     spikes_native = _pull_signal(dataset, "spikes")
     if spikes_native is None:
         raise KeyError("'spikes' signal not found in NWB dataset")
-    spikes_native = spikes_native.astype(np.int32, copy=False)
+    spikes_native = _clean_spike_matrix(spikes_native)
     logger.info(
         "spikes_native: shape=%s dtype=%s total=%d",
         spikes_native.shape,
@@ -358,6 +430,9 @@ def preprocess_mc_rtt(
         )
         cursor_native = finger[:, :2]
     cursor_native = cursor_native.astype(np.float32, copy=False)
+    n_interp = _interpolate_nan_inplace(cursor_native)
+    if n_interp:
+        logger.info("cursor: linearly interpolated %d non-finite samples", n_interp)
     logger.info("cursor_native: shape=%s dtype=%s", cursor_native.shape, cursor_native.dtype)
 
     # Crop to common length if signals disagree
@@ -384,7 +459,12 @@ def preprocess_mc_rtt(
     )
 
     # 5. Velocity
-    velocity = _compute_velocity(cursor_binned, cfg.bin_size_ms, mode=cfg.velocity_mode)
+    velocity = _compute_velocity(
+        cursor_binned,
+        cfg.bin_size_ms,
+        mode=cfg.velocity_mode,
+        smooth_sigma_bins=cfg.velocity_smooth_sigma_bins,
+    )
 
     # 6. Split
     train_idx, val_idx, test_idx = time_contiguous_split(

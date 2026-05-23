@@ -77,9 +77,9 @@ at `results/{model}/{model}_results.json`:
 }
 ```
 
-The JSON is what `scripts/make_figures.py` reads to draw the headline
-accuracy-efficiency frontier. Use this exact schema for both ridge and
-SNN runs so curves overlay automatically.
+The JSON is what `scripts/generate_final_figures.py` reads to draw the
+headline accuracy-efficiency frontier. Use this exact schema for both
+ridge and SNN runs so curves overlay automatically.
 
 ## Velocity computation
 
@@ -90,8 +90,14 @@ finite difference, then resampled onto bin centers:
 v_t = (pos_{t+1} - pos_{t-1}) / (2 * bin_size_s)
 ```
 
-Edge bins use forward/backward difference. Velocity is **not** smoothed
-before being used as the target.
+Edge bins use forward/backward difference. The resulting velocity trace
+is then smoothed with a 1-D Gaussian along the time axis with
+`sigma = 1` bin (= 50 ms at the default bin size). Smoothing is
+standard BCI practice — finite differences amplify sample-level cursor
+noise, and an unsmoothed target underestimates how well a decoder
+explains the underlying movement signal. Both ridge and SNN train and
+score against the same smoothed target. Pass
+`--velocity-smooth-sigma-bins 0` to disable.
 
 ## Train/val/test split
 

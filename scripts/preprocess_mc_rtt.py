@@ -45,6 +45,12 @@ def parse_args() -> argparse.Namespace:
         default="cursor_pos",
         help="primary behavior signal; falls back to finger_pos[:, :2] if absent",
     )
+    p.add_argument(
+        "--velocity-smooth-sigma-bins",
+        type=float,
+        default=1.0,
+        help="Gaussian sigma in bins applied to the velocity target (0 disables)",
+    )
     p.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
     return p.parse_args()
 
@@ -156,6 +162,7 @@ def main() -> int:
         boundary_gap=args.boundary_gap,
         velocity_mode=args.velocity_mode,
         behavior_signal=args.behavior_signal,
+        velocity_smooth_sigma_bins=args.velocity_smooth_sigma_bins,
     )
     save_processed(processed, args.output)
     size_mb = args.output.stat().st_size / 1e6
