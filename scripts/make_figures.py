@@ -12,6 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from src.evaluation.plots import plot_accuracy_efficiency_frontier
 
 LOG_FORMAT = "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s"

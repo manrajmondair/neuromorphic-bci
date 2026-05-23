@@ -4,7 +4,10 @@ Owned by snn-latency-decoder.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.controls.order_shuffle import shuffle_within_bin_order
 from src.data.preprocess import load_processed

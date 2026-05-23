@@ -14,6 +14,8 @@ import logging
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from src.data.preprocess import load_processed
 from src.evaluation.efficiency_tracker import (
     compute_efficiency_summary,

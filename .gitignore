@@ -32,8 +32,11 @@ data/processed/*
 !data/processed/.gitkeep
 !data/README.md
 
-# Results — keep directory structure, ignore heavy artifacts
+# Results — keep directory structure, ignore heavy artifacts.
+# Prediction npz files are small and required by scripts/generate_final_figures.py,
+# so they stay tracked.
 results/**/*.npz
+!results/**/predictions_*.npz
 results/**/*.pkl
 results/**/*.pt
 results/**/*.h5
