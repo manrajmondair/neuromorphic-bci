@@ -129,6 +129,26 @@ def main() -> int:
             rows.append(row)
             append_result(args.results_csv, row)
 
+            # Save predictions for the reference seed so the qualitative
+            # trajectory figure in scripts/generate_final_figures.py has
+            # something to overlay. Other seeds skip this to keep file
+            # count bounded.
+            if seed == args.seeds[0]:
+                pred_path = (
+                    Path(args.results_csv).parent
+                    / f"predictions_f{f:.2f}_seed{seed}.npz"
+                )
+                np.savez(
+                    pred_path,
+                    y_true=y[test_idx],
+                    y_pred=y_pred.astype(np.float32),
+                    test_idx=test_idx,
+                    bin_size_ms=np.array(int(data["bin_size_ms"])),
+                    event_budget=np.array(float(f)),
+                    model=np.array("ridge"),
+                )
+                logger.info("saved predictions to %s", pred_path)
+
     config = {
         "processed_path": str(args.processed_path),
         "bin_size_ms": int(data["bin_size_ms"]),
