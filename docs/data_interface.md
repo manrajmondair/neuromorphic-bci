@@ -103,8 +103,9 @@ score against the same smoothed target. Pass
 
 Time-contiguous, not random — random would leak across nearby bins. The
 default is the first 70% of bins → train, next 15% → val, last 15% → test,
-on the chronological order of the recording. Reproduce by seeding from
-`configs/default.yaml`.
+on the chronological order of the recording. `scripts/preprocess_mc_rtt.py`
+exposes `--train-frac / --val-frac / --test-frac / --boundary-gap` to
+override at run time.
 
 ## Mock data
 
