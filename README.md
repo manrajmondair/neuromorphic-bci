@@ -22,7 +22,7 @@ citation, and download instructions live in **`docs/dataset.md`**.
 
 ```bash
 python scripts/download_mc_rtt.py     # writes data/raw/000129/...
-python scripts/preprocess_mc_rtt.py   # writes data/processed/mc_rtt.npz
+python scripts/preprocess_mc_rtt.py   # writes data/processed/processed_mc_rtt.npz
 ```
 
 ## Repo layout
@@ -58,13 +58,13 @@ in `src/evaluation/metrics.py`. Nothing else needs synchronous coordination.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/preprocess_mc_rtt.py        # writes data/processed/mc_rtt.npz
+python scripts/preprocess_mc_rtt.py        # writes data/processed/processed_mc_rtt.npz
 python scripts/run_ridge.py                # writes results/ridge/*.csv
 python scripts/run_snn.py                  # writes results/snn/*.csv
 python scripts/make_figures.py             # writes results/figures/*.png
 ```
 
-The SNN side can develop without `data/processed/mc_rtt.npz` by importing
+The SNN side can develop without `data/processed/processed_mc_rtt.npz` by importing
 `src.utils.mock_data.make_mock_processed_data()` — same schema as the real
 output, so swapping is a one-line change.
 

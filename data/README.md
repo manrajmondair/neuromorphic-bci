@@ -17,7 +17,7 @@ data/
 ├── raw/           dandi download lands here  (gitignored)
 │   └── 000129/    NLB MC_RTT dandiset
 └── processed/     preprocess script output    (gitignored)
-    └── mc_rtt.npz schema in docs/data_interface.md
+    └── processed_mc_rtt.npz   schema in docs/data_interface.md
 ```
 
 ## One-line bootstrap

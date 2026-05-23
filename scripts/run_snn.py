@@ -19,7 +19,7 @@ SEEDS = [0, 1, 2]
 
 
 def main() -> None:
-    data = load_processed(Path("data/processed/mc_rtt.npz"))
+    data = load_processed(Path("data/processed/processed_mc_rtt.npz"))
     num_neurons = data["num_neurons"]
     results_csv = Path("results/snn/results.csv")
 

@@ -8,7 +8,7 @@ change anything here, both sides break — coordinate first.
 `scripts/preprocess_mc_rtt.py` writes one file:
 
 ```
-data/processed/mc_rtt.npz
+data/processed/processed_mc_rtt.npz
 ```
 
 When loaded with `np.load(..., allow_pickle=True)`, it has these keys:
