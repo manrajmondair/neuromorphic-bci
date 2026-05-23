@@ -1,0 +1,73 @@
+{
+  "model": "ridge",
+  "dataset": "NLB_MC_RTT",
+  "bin_size_ms": 50,
+  "num_neurons": 98,
+  "num_outputs": 2,
+  "num_bins": 12982,
+  "macs_per_prediction_dense": 196,
+  "dense_macs_total": 2544472,
+  "budgets": [
+    {
+      "event_budget": 1.0,
+      "events_total": 256787,
+      "num_bins": 12982,
+      "events_per_bin_mean": 19.78023417038977,
+      "events_per_bin_median": 18.0,
+      "events_per_bin_std": 9.459690804795505,
+      "events_per_bin_min": 0,
+      "events_per_bin_max": 66,
+      "empty_bin_fraction": 0.00046217840086273303,
+      "dense_macs": 2544472,
+      "event_driven_macs": 539538,
+      "macs_avoided": 2004934,
+      "macs_avoided_fraction": 0.7879567941796962
+    },
+    {
+      "event_budget": 0.5,
+      "events_total": 125107,
+      "num_bins": 12982,
+      "events_per_bin_mean": 9.636958866122324,
+      "events_per_bin_median": 9.0,
+      "events_per_bin_std": 4.733312904338789,
+      "events_per_bin_min": 0,
+      "events_per_bin_max": 33,
+      "empty_bin_fraction": 0.00046217840086273303,
+      "dense_macs": 2544472,
+      "event_driven_macs": 276178,
+      "macs_avoided": 2268294,
+      "macs_avoided_fraction": 0.8914596034069151
+    },
+    {
+      "event_budget": 0.25,
+      "events_total": 59324,
+      "num_bins": 12982,
+      "events_per_bin_mean": 4.569711908796796,
+      "events_per_bin_median": 4.0,
+      "events_per_bin_std": 2.3810220415395027,
+      "events_per_bin_min": 0,
+      "events_per_bin_max": 16,
+      "empty_bin_fraction": 0.00046217840086273303,
+      "dense_macs": 2544472,
+      "event_driven_macs": 144612,
+      "macs_avoided": 2399860,
+      "macs_avoided_fraction": 0.9431662050122775
+    },
+    {
+      "event_budget": 0.1,
+      "events_total": 21204,
+      "num_bins": 12982,
+      "events_per_bin_mean": 1.6333384686488985,
+      "events_per_bin_median": 1.0,
+      "events_per_bin_std": 0.8673670579494563,
+      "events_per_bin_min": 0,
+      "events_per_bin_max": 6,
+      "empty_bin_fraction": 0.00046217840086273303,
+      "dense_macs": 2544472,
+      "event_driven_macs": 68372,
+      "macs_avoided": 2476100,
+      "macs_avoided_fraction": 0.973129199299501
+    }
+  ],
+  "notes": "Dense MAC count = 2\u00b7N\u00b7T (X @ W + b for X[1,N], W[N,2], T bins). Event-driven MAC count = 2\u00b7E + 2\u00b7T (per-spike accumulator update plus per-bin bias). MACs avoided = dense \u2212 event_driven; this is the secondary efficiency number reported alongside R\u00b2."
+}
