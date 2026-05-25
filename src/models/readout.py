@@ -3,6 +3,7 @@
 Owned by snn-latency-decoder.
 """
 from __future__ import annotations
+from sklearn.linear_model import Ridge
 
 import numpy as np
 
@@ -16,7 +17,15 @@ class LinearReadout:
         self.b: np.ndarray | None = None
 
     def fit(self, Z: np.ndarray, y: np.ndarray) -> "LinearReadout":
-        raise NotImplementedError
+        model = Ridge(self.alpha)
+        model.fit(Z, y)
+        self.W = model.coef_
+        self.b = model.intercept_
+        return self
 
     def predict(self, Z: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
+        W = self.W
+        b = self.b
+        y_hat = W @ Z + b
+        return y_hat
+        
