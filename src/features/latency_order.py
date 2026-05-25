@@ -43,12 +43,16 @@ def pairwise_order_features(
     pairs has shape [P, 2]. Returns [num_bins, P].
     """
     taus = time_to_first_spike(event_times, event_neurons, num_neurons, bin_size_ms)
+    
     num_pairs = len(pairs)
     num_bins = len(event_times)
+    
     result = np.zero((num_bins, num_pairs), dtype=np.float32)
+    
     for p in range(num_pairs):
         i = pairs[p, 0]
         j = pairs[p, 1]
         for b in range(num_bins):
             result[b, p] = taus[b, i] < taus[b, j]
+            
     return result
