@@ -48,13 +48,14 @@ class SparseLatencySNN:
             u = np.zeros(self.hidden_dim, np.float32)
             spikes = event_neurons[b]
             for neuron in spikes:
-                u =  self.beta * u + W[:, neuron]
+                u =  self.beta * u + self.W[:, neuron]
                 u[u >= self.threshold] -= self.threshold
             Z[b] = u
 
-        Z_train
+        self.readout = LinearReadout()
+        self.readout.fit(Z[train_idx], velocity[train_idx])
         
-        raise NotImplementedError
+        return self
 
     def predict(
         self,
@@ -62,4 +63,7 @@ class SparseLatencySNN:
         event_neurons: list[np.ndarray],
         idx: np.ndarray,
     ) -> np.ndarray:
+
+        
+        
         raise NotImplementedError
