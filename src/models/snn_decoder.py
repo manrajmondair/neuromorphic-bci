@@ -38,6 +38,10 @@ class SparseLatencySNN:
         train_idx: np.ndarray,
         val_idx: np.ndarray,
     ) -> "SparseLatencySNN":
+
+        rng = np.random.default_rng(self.seed)
+        self.W = rng.normal(loc=0, scale=1/np.sqrt(self.num_neurons), size=(self.hidden_dim, self.num_neurons))
+        
         raise NotImplementedError
 
     def predict(
