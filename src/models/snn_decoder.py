@@ -64,6 +64,17 @@ class SparseLatencySNN:
         idx: np.ndarray,
     ) -> np.ndarray:
 
+        times = [event_times[i] for i in idx]
+        neurons = [event_neurons[i] for i in idx]
+        num_bins = len(idx)
+        Z = np.zeros((num_bins, self.hidden_dim), np.float32)
         
-        
-        raise NotImplementedError
+        for b in range(num_bins):
+            u = np.zeros(self.hidden_dim, np.float32)
+            spikes = event_neurons[b]
+            for neuron in spikes:
+                u =  self.beta * u + self.W[:, neuron]
+                u[u >= self.threshold] -= self.threshold
+            Z[b] = u
+
+        return self.readout.predict(Z)
