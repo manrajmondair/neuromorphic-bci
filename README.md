@@ -28,7 +28,6 @@ python scripts/preprocess_mc_rtt.py   # writes data/processed/processed_mc_rtt.n
 ## Repo layout
 
 ```
-configs/        per-model YAML (currently only SNN; ridge knobs live in argparse)
 data/           raw/ and processed/ are gitignored; only README tracked
 docs/           the shared data-interface contract lives here — read first
 src/data/       NLB MC_RTT loading, binning, velocity, train/val/test split
@@ -40,9 +39,12 @@ src/utils/      seeds, mock data generator (lets SNN side dev without real data)
 scripts/        one CLI per experiment
 notebooks/      Colab GPU sweep notebook
 results/        per-model CSV/JSON outputs and final figures
-tests/          invariant + smoke tests for the data-ridge side
+tests/          invariant + smoke tests for both decoder sides
 report/         proposal + final report sources
 ```
+
+All experiment knobs live in the per-script `argparse` interfaces (run any
+script with `--help` for the full list).
 
 ## Work split
 
@@ -64,7 +66,7 @@ python scripts/download_mc_rtt.py          # writes data/raw/000129/*.nwb
 python scripts/preprocess_mc_rtt.py        # writes data/processed/processed_mc_rtt.npz
 python scripts/run_ridge.py                # writes results/ridge/*.csv + .json + predictions
 python scripts/run_efficiency_analysis.py  # writes results/ridge/computational_efficiency.json
-python scripts/run_snn.py                  # writes results/snn/*.csv + .json (Alex's branch)
+python scripts/run_snn.py                  # writes results/snn/*.{csv,json} + results/controls/*.{csv,json} + predictions
 python scripts/generate_final_figures.py   # writes results/figures/*.png at dpi=300
 ```
 
@@ -82,13 +84,13 @@ pytest tests/
 ```
 
 Covered: shared data-interface invariants, event-budget filter properties,
-joint R² metric (against analytical cases), and the dense/event-driven MAC
-accounting in the efficiency tracker.
+joint R² metric (against analytical cases), the dense/event-driven MAC
+accounting in the efficiency tracker, and the SNN encode → readout pipeline
+including the order-shuffle control.
 
 ## Headline deliverable
 
 A single figure: velocity R² versus event budget f ∈ {1.00, 0.50, 0.25, 0.10},
-with three lines: ridge, SNN, shuffled-SNN control. Once the SNN side
-publishes its canonical JSONs under `results/snn/` and `results/controls/`,
-`scripts/generate_final_figures.py` overlays them onto the existing ridge
-curve without any code change.
+with three lines: ridge, SNN, shuffled-SNN control. `scripts/generate_final_figures.py`
+reads the canonical JSONs under `results/ridge/`, `results/snn/`, and
+`results/controls/` and overlays whichever curves are present at dpi=300.
