@@ -1,0 +1,164 @@
+{
+  "model": "snn_shuffle",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": {
+    "processed_path": "data/processed/processed_mc_rtt.npz",
+    "bin_size_ms": 50,
+    "num_neurons": 98,
+    "hidden_dim": 128,
+    "tau_ms": 10.0,
+    "threshold": 0.5,
+    "readout_alpha": 1.0,
+    "event_budgets": [
+      1.0,
+      0.5,
+      0.25,
+      0.1
+    ],
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "split_sizes": {
+      "train": 9086,
+      "val": 1945,
+      "test": 1947
+    }
+  },
+  "results": [
+    {
+      "model": "snn_shuffle",
+      "event_budget": 1.0,
+      "seed": 0,
+      "r2_vx": 0.009696297901279682,
+      "r2_vy": -0.0010148819223416705,
+      "r2_joint": 0.0057067550642573295,
+      "n_events_used": 256787,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.5,
+      "seed": 0,
+      "r2_vx": 0.008094919820873958,
+      "r2_vy": -0.01744693844903722,
+      "r2_joint": -0.0014185361553054054,
+      "n_events_used": 125107,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.25,
+      "seed": 0,
+      "r2_vx": 0.001891810841863184,
+      "r2_vy": -0.005216524312287696,
+      "r2_joint": -0.0007557973641774129,
+      "n_events_used": 59324,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.1,
+      "seed": 0,
+      "r2_vx": -0.007372695870830448,
+      "r2_vy": -0.007887176504560722,
+      "r2_joint": -0.0075643220558898605,
+      "n_events_used": 21204,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 1.0,
+      "seed": 1,
+      "r2_vx": 0.020126907213657508,
+      "r2_vy": 0.008147860767318438,
+      "r2_joint": 0.015665128051015054,
+      "n_events_used": 256787,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.5,
+      "seed": 1,
+      "r2_vx": 0.0007469237683733754,
+      "r2_vy": 0.007098367041423637,
+      "r2_joint": 0.003112616010685465,
+      "n_events_used": 125107,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.25,
+      "seed": 1,
+      "r2_vx": -0.004724524115997664,
+      "r2_vy": -0.01629567493743922,
+      "r2_joint": -0.009034376311176207,
+      "n_events_used": 59324,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.1,
+      "seed": 1,
+      "r2_vx": -0.0004434014764769234,
+      "r2_vy": -0.0007710030921199706,
+      "r2_joint": -0.0005654217114658966,
+      "n_events_used": 21204,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 1.0,
+      "seed": 2,
+      "r2_vx": 0.01327138467534994,
+      "r2_vy": -0.011649314915924913,
+      "r2_joint": 0.003989288754534526,
+      "n_events_used": 256787,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.5,
+      "seed": 2,
+      "r2_vx": -0.004738595908167165,
+      "r2_vy": -0.007027721702832945,
+      "r2_joint": -0.005591215840568209,
+      "n_events_used": 125107,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.25,
+      "seed": 2,
+      "r2_vx": 0.00453660450538218,
+      "r2_vy": -0.011325754449900582,
+      "r2_joint": -0.0013715738270145827,
+      "n_events_used": 59324,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    },
+    {
+      "model": "snn_shuffle",
+      "event_budget": 0.1,
+      "seed": 2,
+      "r2_vx": -0.0008506817875055805,
+      "r2_vy": -0.008872187514204821,
+      "r2_joint": -0.0038384143474157195,
+      "n_events_used": 21204,
+      "n_events_total": 256787,
+      "notes": "within-bin order permuted"
+    }
+  ]
+}
