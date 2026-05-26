@@ -1,0 +1,81 @@
+{
+  "model": "ridge",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": {
+    "processed_path": "data/processed/processed_mc_rtt.npz",
+    "bin_size_ms": 50,
+    "num_neurons": 98,
+    "num_bins": 12982,
+    "event_budgets": [
+      1.0,
+      0.5,
+      0.25,
+      0.1
+    ],
+    "seeds": [
+      0
+    ],
+    "n_alphas": 1000,
+    "alpha_lo_hi": [
+      0.0001,
+      100000.0
+    ],
+    "device": "cuda",
+    "gpu": "Tesla T4",
+    "torch": "2.10.0+cu128",
+    "branch": "data-ridge-baseline",
+    "commit": "d3a2556",
+    "notebook": "02_ridge_baseline_colab.ipynb"
+  },
+  "results": [
+    {
+      "model": "ridge",
+      "event_budget": 1.0,
+      "seed": 0,
+      "r2_vx": 0.16936487210223583,
+      "r2_vy": 0.16204974950886974,
+      "r2_joint": 0.16664024275001976,
+      "best_alpha": 9.999999999999999e-05,
+      "n_events_used": 256787,
+      "n_events_total": 256787,
+      "notes": "gpu sweep over 1000 alphas in 0.69s"
+    },
+    {
+      "model": "ridge",
+      "event_budget": 0.5,
+      "seed": 0,
+      "r2_vx": 0.10662703119922678,
+      "r2_vy": 0.07968285092862337,
+      "r2_joint": 0.09659125893434839,
+      "best_alpha": 9.999999999999999e-05,
+      "n_events_used": 125107,
+      "n_events_total": 256787,
+      "notes": "gpu sweep over 1000 alphas in 0.05s"
+    },
+    {
+      "model": "ridge",
+      "event_budget": 0.25,
+      "seed": 0,
+      "r2_vx": 0.057829756799940735,
+      "r2_vy": 0.033645772953815545,
+      "r2_joint": 0.04882206193226635,
+      "best_alpha": 18.63246311931561,
+      "n_events_used": 59324,
+      "n_events_total": 256787,
+      "notes": "gpu sweep over 1000 alphas in 0.05s"
+    },
+    {
+      "model": "ridge",
+      "event_budget": 0.1,
+      "seed": 0,
+      "r2_vx": 0.02387902947997511,
+      "r2_vy": 0.01762007615909511,
+      "r2_joint": 0.02154778653570988,
+      "best_alpha": 71.75560918936925,
+      "n_events_used": 21204,
+      "n_events_total": 256787,
+      "notes": "gpu sweep over 1000 alphas in 0.05s"
+    }
+  ]
+}

@@ -17,7 +17,7 @@ data/
 ├── raw/           dandi download lands here  (gitignored)
 │   └── 000129/    NLB MC_RTT dandiset
 └── processed/     preprocess script output    (gitignored)
-    └── mc_rtt.npz schema in docs/data_interface.md
+    └── processed_mc_rtt.npz   schema in docs/data_interface.md
 ```
 
 ## One-line bootstrap
@@ -27,4 +27,4 @@ python scripts/download_mc_rtt.py && python scripts/preprocess_mc_rtt.py
 ```
 
 After that, both ridge and SNN training scripts work against
-`data/processed/mc_rtt.npz`.
+`data/processed/processed_mc_rtt.npz`.

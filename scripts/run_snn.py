@@ -4,7 +4,10 @@ Owned by snn-latency-decoder.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.controls.order_shuffle import shuffle_within_bin_order
 from src.data.preprocess import load_processed
@@ -19,7 +22,7 @@ SEEDS = [0, 1, 2]
 
 
 def main() -> None:
-    data = load_processed(Path("data/processed/mc_rtt.npz"))
+    data = load_processed(Path("data/processed/processed_mc_rtt.npz"))
     num_neurons = data["num_neurons"]
     results_csv = Path("results/snn/results.csv")
 
@@ -45,7 +48,7 @@ def main() -> None:
                     "notes": "",
                 },
             )
-            print(f"snn f={f:.2f} seed={seed} r2_mean={r2['r2_mean']:.4f}")
+            print(f"snn f={f:.2f} seed={seed} r2_joint={r2['r2_joint']:.4f}")
 
             et_s, en_s = shuffle_within_bin_order(et, en, seed=seed)
             snn_s = SparseLatencySNN(num_neurons=num_neurons, seed=seed).fit(
@@ -65,7 +68,7 @@ def main() -> None:
                     "notes": "within-bin order permuted",
                 },
             )
-            print(f"snn_shuffle f={f:.2f} seed={seed} r2_mean={r2_s['r2_mean']:.4f}")
+            print(f"snn_shuffle f={f:.2f} seed={seed} r2_joint={r2_s['r2_joint']:.4f}")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,0 @@
-# Ridge spike-count baseline.
-extends: default.yaml
-
-model:
-  name: ridge
-  alpha: 1.0
-
-output:
-  results_csv: results/ridge/results.csv

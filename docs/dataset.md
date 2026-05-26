@@ -38,10 +38,16 @@ From the repo root, with the project venv activated:
 
 ```bash
 pip install -r requirements.txt
+pip install --no-deps nlb-tools           # upstream pin clash on pandas — see below
 python scripts/download_mc_rtt.py
 ```
 
-This downloads the NWB file(s) into `data/raw/`. The directory is
+`nlb_tools` is installed separately with `--no-deps` because its setup
+pins `pandas<=1.3.4` even though only basic DataFrame ops are used. We
+need a modern pandas, so we let pip resolve everything else first and
+then drop `nlb_tools` in on top.
+
+The download writes NWB file(s) into `data/raw/`. The directory is
 gitignored, so each contributor downloads locally and the bytes never
 hit the repo.
 
@@ -64,14 +70,14 @@ data/raw/
 
 ```bash
 python scripts/preprocess_mc_rtt.py
-# writes data/processed/mc_rtt.npz with the schema in docs/data_interface.md
+# writes data/processed/processed_mc_rtt.npz, schema in docs/data_interface.md
 ```
 
 After this, **both branches** load the dataset the same way:
 
 ```python
 from src.data.preprocess import load_processed
-data = load_processed("data/processed/mc_rtt.npz")
+data = load_processed("data/processed/processed_mc_rtt.npz")
 ```
 
 The SNN branch can develop before this is ready by using

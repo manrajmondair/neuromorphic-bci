@@ -1,5 +1,10 @@
 """Spike-count feature construction for the ridge baseline.
 
+Single canonical function for going from per-bin sparse event lists back
+to a dense `[num_bins, num_neurons]` count matrix. Used both inside
+`apply_event_budget`'s downstream step and standalone when only counts
+need to be reconstructed.
+
 Owned by data-ridge-baseline.
 """
 from __future__ import annotations
@@ -8,16 +13,17 @@ import numpy as np
 
 
 def counts_from_events(
-    event_times: list[np.ndarray],
     event_neurons: list[np.ndarray],
     num_neurons: int,
 ) -> np.ndarray:
-    """Rebuild [num_bins, num_neurons] spike counts from per-bin event lists.
+    """Rebuild a dense `[num_bins, num_neurons]` spike-count matrix.
 
-    Used after event-budget filtering, where event_times/event_neurons have
-    been truncated so the cached `spike_counts` array no longer matches.
+    For each bin t and each neuron id in `event_neurons[t]`, the
+    corresponding count is incremented by one. Each entry in
+    `event_neurons[t]` is one retained spike (post event-budget filtering
+    if applicable).
     """
-    num_bins = len(event_times)
+    num_bins = len(event_neurons)
     counts = np.zeros((num_bins, num_neurons), dtype=np.int32)
     for t in range(num_bins):
         neurons_t = event_neurons[t]
