@@ -13,22 +13,27 @@ def time_to_first_spike(
     num_neurons: int,
     bin_size_ms: int,
 ) -> np.ndarray:
-    """Return [num_bins, num_neurons] of within-bin first-spike latency in ms.
+    """Return `[num_bins, num_neurons]` of within-bin first-spike latencies in ms.
 
-    Neurons with no spike in the bin get `bin_size_ms` (treated as "never").
+    Neurons that did not fire in bin `t` get `bin_size_ms` as a sentinel ("never
+    fired"). Assumes `event_times[t]` is sorted ascending — invariant 2 from
+    `docs/data_interface.md` — so the first appearance of each neuron is its
+    earliest spike.
     """
     num_bins = len(event_times)
-    taus = np.full((num_bins, num_neurons), bin_size_ms, dtype=np.float32)
-
-    for i in range(len(event_times)):
-        times = event_times[i]
-        neurons = event_neurons[i]
-        for j in range(len(neurons)):
-            neuron = neurons[j]
-            time = times[j]
-            if taus[i, neuron] == bin_size_ms:
-                taus[i, neuron] = time
-            
+    taus = np.full((num_bins, num_neurons), float(bin_size_ms), dtype=np.float32)
+    for t in range(num_bins):
+        times = event_times[t]
+        neurons = event_neurons[t]
+        if neurons.size == 0:
+            continue
+        # The first index of each unique neuron under stable ordering is its earliest spike.
+        seen = np.zeros(num_neurons, dtype=bool)
+        for k in range(neurons.size):
+            n = int(neurons[k])
+            if not seen[n]:
+                taus[t, n] = float(times[k])
+                seen[n] = True
     return taus
 
 
@@ -39,20 +44,15 @@ def pairwise_order_features(
     num_neurons: int,
     bin_size_ms: int,
 ) -> np.ndarray:
-    """For neuron pairs (i, j), 1 if i fires before j in the bin, else 0.
-    pairs has shape [P, 2]. Returns [num_bins, P].
+    """For each neuron pair `(i, j)`, 1 if `i` fires before `j` in the bin, else 0.
+
+    `pairs` has shape `[P, 2]`. Returns `[num_bins, P]`. Bins where neither
+    neuron fired (both at the `bin_size_ms` sentinel) collapse to 0 because
+    `tau_i < tau_j` is false on equal sentinels.
     """
+    if pairs.ndim != 2 or pairs.shape[1] != 2:
+        raise ValueError(f"pairs must be [P, 2], got shape {pairs.shape}")
     taus = time_to_first_spike(event_times, event_neurons, num_neurons, bin_size_ms)
-    
-    num_pairs = len(pairs)
-    num_bins = len(event_times)
-    
-    result = np.zero((num_bins, num_pairs), dtype=np.float32)
-    
-    for p in range(num_pairs):
-        i = pairs[p, 0]
-        j = pairs[p, 1]
-        for b in range(num_bins):
-            result[b, p] = taus[b, i] < taus[b, j]
-            
-    return result
+    i = pairs[:, 0]
+    j = pairs[:, 1]
+    return (taus[:, i] < taus[:, j]).astype(np.float32)
