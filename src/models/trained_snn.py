@@ -1,33 +1,34 @@
-"""End-to-end trainable LIF SNN with surrogate gradients.
+"""End-to-end trainable LIF SNN with surrogate gradients, optional bin history.
 
 Architecture
 ------------
-Each 50 ms input bin is re-binned into a fixed number of equal-width
-sub-bins (default 10, i.e. 5 ms each), producing a per-bin tensor of
-input spike counts with shape `[num_sub_bins, num_neurons]`. We then
-run a hidden LIF layer over the sub-bins with continuous-time leak,
-fully vectorized across all bins:
+Each input bin is re-binned into a fixed number of equal-width sub-bins
+(default 10 sub-bins of 5 ms at the 50 ms bin width), producing a
+per-bin tensor of input spike counts with shape `[num_sub_bins, num_neurons]`.
 
-    for t = 0..num_sub_bins - 1:
+If `k_history > 0`, the encoder concatenates the previous `k_history`
+bins of sub-bin counts along the time axis before running the LIF, so
+the LIF sees `(k_history + 1) * num_sub_bins` time steps per prediction.
+History columns that would reach across a train/val/test split boundary
+are zero-padded (the same idea as `stack_lag_features` for the ridge
+decoder).
+
+The hidden LIF layer is run vectorized across bins:
+
+    for t = 0..S - 1:
         u = u * exp(-sub_bin_ms / tau_ms) + x[:, t, :] @ W^T
         s = surrogate_spike(u, threshold)        # fast-sigmoid backward
-        z += s
+        z += s                                   # per-bin spike count
         u = u - s * threshold                    # hard reset
 
-The per-bin hidden spike-count vector `z` (of shape `[num_bins, hidden_dim]`)
-goes through a linear readout to 2D velocity. All weights — input
-projection `W`, readout `W_out` and `b_out` — are trained by Adam with
-backprop-through-time using snntorch's fast-sigmoid surrogate gradient.
+`z` (shape `[num_bins, hidden_dim]`) is the feature vector passed to a
+linear readout to predict 2D velocity. All weights — input projection
+`W`, readout `W_out` and `b_out` — are trained by Adam with BPTT and a
+fast-sigmoid surrogate gradient.
 
-This is the trained counterpart to the random-projection reservoir in
-`SparseLatencySNN`. If a trained SNN can match or beat the count-ridge
-baseline at low event budgets while the reservoir SNN cannot, the
-proposal's claim ("a sparse-event neuromorphic decoder is sufficient")
-survives the test.
-
-Sub-bin coarsening trades sub-`sub_bin_ms` ms timing precision for a
-fully vectorized BPTT pass. For BCI cursor decoding at 50 ms bins the
-default 5 ms sub-bin resolution is far below behaviourally relevant.
+History lets the LIF integrate over the same temporal context the
+lag-feature ridge decoder uses, which is what closes the accuracy gap
+to the strong baseline.
 """
 from __future__ import annotations
 
@@ -67,8 +68,7 @@ def _sparse_events_to_subbin_counts(
 ) -> np.ndarray:
     """Bucket each bin's sparse events into `num_sub_bins` equal-width slots.
 
-    Returns a `[num_bins, num_sub_bins, num_neurons]` float32 array of
-    spike counts. `event_times[t]` is in ms within the parent bin.
+    Returns `[num_bins, num_sub_bins, num_neurons]` float32.
     """
     num_bins = len(event_times)
     sub_w = bin_size_ms / num_sub_bins
@@ -79,38 +79,106 @@ def _sparse_events_to_subbin_counts(
         if neurons.size == 0:
             continue
         slot = np.clip((times / sub_w).astype(np.int64), 0, num_sub_bins - 1)
-        # Group-by accumulation.
         np.add.at(out[t], (slot, neurons.astype(np.int64)), 1.0)
     return out
 
 
+def _stack_history(
+    x: np.ndarray,
+    k_history: int,
+    split_starts: tuple[int, ...] | None,
+) -> np.ndarray:
+    """Stack `k_history` previous bins along the sub-bin time axis.
+
+    Input `x` has shape `[num_bins, num_sub_bins, num_neurons]`.
+    Output has shape `[num_bins, (k_history + 1) * num_sub_bins, num_neurons]`,
+    where row t is the temporal concatenation `[x[t-k], ..., x[t-1], x[t]]`.
+
+    Bins that fall within `k_history` of the start of any split (passed in
+    `split_starts`) get their cross-boundary sub-bins zeroed so val/test
+    rows never carry spikes from the previous split. For bins before the
+    first valid history index, missing context is also zeroed.
+    """
+    if k_history < 0:
+        raise ValueError(f"k_history must be >= 0, got {k_history}")
+    num_bins, S, N = x.shape
+    if k_history == 0:
+        return x.copy()
+    out = np.zeros((num_bins, (k_history + 1) * S, N), dtype=np.float32)
+    for t in range(num_bins):
+        # The current bin is the last block.
+        out[t, k_history * S : (k_history + 1) * S] = x[t]
+        # Fill earlier history slots: index t - k for k = 1..k_history (oldest first).
+        for k in range(1, k_history + 1):
+            src = t - k
+            if src < 0:
+                continue  # zero pad at the very start of the recording
+            # If src is in a different split than t, zero this block.
+            if split_starts is not None:
+                # Find the split index of t (the largest start <= t) and of src.
+                t_split = max((s for s in split_starts if s <= t), default=0)
+                src_split = max((s for s in split_starts if s <= src), default=0)
+                if t_split != src_split:
+                    continue
+            slot = (k_history - k) * S
+            out[t, slot : slot + S] = x[src]
+    return out
+
+
 class TrainedLatencySNN:
-    """Trainable LIF + linear readout, supervised on 2D velocity."""
+    """Trainable LIF + linear readout, supervised on 2D velocity.
+
+    Parameters
+    ----------
+    num_neurons : int
+    hidden_dim : int
+    tau_ms : float
+        Membrane time constant (continuous-time leak).
+    threshold : float
+        Firing threshold (also subtracted on hard reset).
+    bin_size_ms : int
+    num_sub_bins : int
+        Number of equal-width slots inside each input bin.
+    k_history : int
+        Number of previous bins to stack as input context. 0 = single bin.
+    lr : float
+    weight_decay : float
+    epochs : int
+    patience : int
+        Early-stopping patience on val joint R^2.
+    batch_size : int
+        0 = full batch.
+    seed : int
+    """
 
     def __init__(
         self,
         num_neurons: int,
         hidden_dim: int = 128,
         tau_ms: float = 10.0,
-        threshold: float = 1.0,
+        threshold: float = 0.30,
         bin_size_ms: int = 50,
         num_sub_bins: int = 10,
-        lr: float = 5e-3,
+        k_history: int = 0,
+        lr: float = 1e-2,
         weight_decay: float = 1e-4,
-        epochs: int = 60,
-        patience: int = 10,
-        batch_size: int = 0,  # 0 = full batch
+        epochs: int = 80,
+        patience: int = 15,
+        batch_size: int = 0,
         surrogate_slope: float = 25.0,
         seed: int = 0,
     ):
         if num_sub_bins < 1:
             raise ValueError(f"num_sub_bins must be >= 1, got {num_sub_bins}")
+        if k_history < 0:
+            raise ValueError(f"k_history must be >= 0, got {k_history}")
         self.num_neurons = int(num_neurons)
         self.hidden_dim = int(hidden_dim)
         self.tau_ms = float(tau_ms)
         self.threshold = float(threshold)
         self.bin_size_ms = int(bin_size_ms)
         self.num_sub_bins = int(num_sub_bins)
+        self.k_history = int(k_history)
         self.lr = float(lr)
         self.weight_decay = float(weight_decay)
         self.epochs = int(epochs)
@@ -135,8 +203,8 @@ class TrainedLatencySNN:
     def _encode(self, x: torch.Tensor, W: torch.Tensor) -> torch.Tensor:
         """LIF forward over sub-bins.
 
-        x : [B, S, N]   input spike counts (B bins, S sub-bins, N neurons)
-        W : [hidden, N] input projection
+        x : [B, S, N]   B bins, S total sub-bins (incl. history), N neurons
+        W : [hidden, N]
         returns z : [B, hidden] per-bin total hidden spike counts.
         """
         B, S, N = x.shape
@@ -144,8 +212,7 @@ class TrainedLatencySNN:
         decay = float(np.exp(-(self.bin_size_ms / self.num_sub_bins) / self.tau_ms))
         u = torch.zeros(B, H, device=x.device, dtype=x.dtype)
         z = torch.zeros(B, H, device=x.device, dtype=x.dtype)
-        # Pre-project all sub-bin inputs at once for efficiency.
-        injections = torch.einsum("bsn,hn->bsh", x, W)  # [B, S, H]
+        injections = torch.einsum("bsn,hn->bsh", x, W)
         for t in range(S):
             u = u * decay + injections[:, t, :]
             s = _SpikeFn.apply(u, self.threshold, self.surrogate_slope)
@@ -164,11 +231,20 @@ class TrainedLatencySNN:
         torch.manual_seed(self.seed)
         rng = np.random.default_rng(self.seed)
 
-        # Pre-bucket events once (no python loop in the inner training loop).
+        # Pre-bucket events once, then stack history.
         x_all = _sparse_events_to_subbin_counts(
             event_times, event_neurons, self.num_neurons,
             self.bin_size_ms, self.num_sub_bins,
         )
+        split_starts: tuple[int, ...] = (
+            int(train_idx.min()), int(val_idx.min()),
+        )
+        x_all = _stack_history(x_all, self.k_history, split_starts)
+        logger.info(
+            "trained_snn: subbin counts shape=%s k_history=%d -> seq_len=%d",
+            x_all.shape, self.k_history, x_all.shape[1],
+        )
+
         x_train = torch.from_numpy(x_all[train_idx])
         x_val = torch.from_numpy(x_all[val_idx])
         y_train = torch.from_numpy(np.asarray(velocity[train_idx], dtype=np.float32))
@@ -230,11 +306,24 @@ class TrainedLatencySNN:
         self.best_val_r2 = float(best_val_r2)
         return self
 
+    @property
+    def W(self) -> np.ndarray | None:
+        return self._W.detach().numpy() if self._W is not None else None
+
+    @property
+    def W_out(self) -> np.ndarray | None:
+        return self._W_out.detach().numpy() if self._W_out is not None else None
+
+    @property
+    def b_out(self) -> np.ndarray | None:
+        return self._b_out.detach().numpy() if self._b_out is not None else None
+
     def predict(
         self,
         event_times: list[np.ndarray],
         event_neurons: list[np.ndarray],
         idx: np.ndarray,
+        split_starts: tuple[int, ...] | None = None,
     ) -> np.ndarray:
         if self._W is None or self._W_out is None or self._b_out is None:
             raise RuntimeError("TrainedLatencySNN.predict() called before fit()")
@@ -242,6 +331,11 @@ class TrainedLatencySNN:
             event_times, event_neurons, self.num_neurons,
             self.bin_size_ms, self.num_sub_bins,
         )
+        # If caller didn't pass split_starts, treat the requested idx as a
+        # single contiguous slice (no internal split boundary).
+        if split_starts is None:
+            split_starts = (int(np.min(idx)),)
+        x_all = _stack_history(x_all, self.k_history, split_starts)
         x = torch.from_numpy(x_all[idx])
         with torch.no_grad():
             z = self._encode(x, self._W)

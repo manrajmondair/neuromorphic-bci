@@ -1,0 +1,54 @@
+{
+  "model": "trained_snn_h2",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": {
+    "processed_path": "data/processed/processed_mc_rtt.npz",
+    "bin_size_ms": 50,
+    "num_neurons": 98,
+    "hidden_dim": 128,
+    "tau_ms": 10.0,
+    "threshold": 0.3,
+    "k_history": 2,
+    "num_sub_bins": 10,
+    "lr": 0.01,
+    "weight_decay": 0.0001,
+    "epochs_max": 80,
+    "patience": 15,
+    "surrogate_slope": 25.0,
+    "event_budgets": [
+      1.0
+    ],
+    "seeds": [
+      0
+    ],
+    "n_boot": 100,
+    "split_sizes": {
+      "train": 9086,
+      "val": 1945,
+      "test": 1947
+    }
+  },
+  "results": [
+    {
+      "model": "trained_snn_h2",
+      "event_budget": 1.0,
+      "seed": 0,
+      "r2_vx": 0.4168534333506626,
+      "r2_vy": 0.39599348427782965,
+      "r2_joint": 0.4090838261015487,
+      "r2_joint_ci_lo": 0.3795164158647211,
+      "r2_joint_ci_hi": 0.4340661176993409,
+      "r2_vx_ci_lo": 0.3698400279066358,
+      "r2_vx_ci_hi": 0.4468027850225729,
+      "r2_vy_ci_lo": 0.3506361128264739,
+      "r2_vy_ci_hi": 0.4350406122900508,
+      "n_boot": 100,
+      "best_val_r2": 0.4129042625427246,
+      "epochs_trained": 80,
+      "n_events_used": 256787,
+      "n_events_total": 256787,
+      "notes": "BPTT + fast-sigmoid surrogate"
+    }
+  ]
+}

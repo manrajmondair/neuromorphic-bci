@@ -45,15 +45,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--results-json", type=Path, default=Path("results/trained_snn/trained_snn_results.json"))
     p.add_argument("--event-budgets", type=float, nargs="+", default=list(EVENT_BUDGETS_DEFAULT))
     p.add_argument("--seeds", type=int, nargs="+", default=list(SEEDS_DEFAULT))
-    p.add_argument("--hidden-dim", type=int, default=64)
+    p.add_argument("--hidden-dim", type=int, default=128)
     p.add_argument("--tau-ms", type=float, default=10.0)
-    # Defaults from a small grid sweep at f=1.0: threshold 0.3 + lr 1e-2 hits
-    # r2_joint > 0.18 (beats reservoir SNN + single-bin ridge) within ~80 epochs.
     p.add_argument("--threshold", type=float, default=0.30)
     p.add_argument("--lr", type=float, default=1e-2)
     p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--epochs", type=int, default=80)
-    p.add_argument("--patience", type=int, default=15)
+    p.add_argument("--epochs", type=int, default=120)
+    p.add_argument("--patience", type=int, default=20)
+    p.add_argument(
+        "--k-history",
+        type=int,
+        default=4,
+        help="number of previous bins to stack as input context (0 = single bin)",
+    )
+    p.add_argument("--num-sub-bins", type=int, default=10)
+    p.add_argument("--model-name", default=None,
+                   help="override the 'model' string in result rows (e.g. trained_snn_h4)")
     p.add_argument("--surrogate-slope", type=float, default=25.0)
     p.add_argument("--n-boot", type=int, default=300)
     p.add_argument("--log-level", default="INFO")
@@ -90,6 +97,8 @@ def main() -> int:
                 tau_ms=args.tau_ms,
                 threshold=args.threshold,
                 bin_size_ms=bin_size_ms,
+                num_sub_bins=args.num_sub_bins,
+                k_history=args.k_history,
                 lr=args.lr,
                 weight_decay=args.weight_decay,
                 epochs=args.epochs,
@@ -97,7 +106,8 @@ def main() -> int:
                 surrogate_slope=args.surrogate_slope,
                 seed=seed,
             ).fit(et, en, y, train_idx, val_idx)
-            y_pred = snn.predict(et, en, test_idx)
+            split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
+            y_pred = snn.predict(et, en, test_idx, split_starts=split_starts)
             r2 = velocity_r2(y[test_idx], y_pred)
             r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
             logger.info(
@@ -107,7 +117,7 @@ def main() -> int:
                 snn.best_val_r2, len(snn.history),
             )
             rows.append({
-                "model": "trained_snn",
+                "model": args.model_name or "trained_snn",
                 "event_budget": float(f), "seed": int(seed),
                 "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
                 "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"], "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
@@ -128,10 +138,12 @@ def main() -> int:
                     pred_path,
                     y_true=y[test_idx], y_pred=y_pred.astype(np.float32),
                     test_idx=test_idx, bin_size_ms=np.array(int(bin_size_ms)),
-                    event_budget=np.array(float(f)), model=np.array("trained_snn"),
+                    event_budget=np.array(float(f)),
+                    model=np.array(rows[-1]["model"]),
                 )
                 logger.info("saved predictions to %s", pred_path)
 
+    model_name = args.model_name or "trained_snn"
     config = {
         "processed_path": str(args.processed_path),
         "bin_size_ms": bin_size_ms,
@@ -139,6 +151,8 @@ def main() -> int:
         "hidden_dim": int(args.hidden_dim),
         "tau_ms": float(args.tau_ms),
         "threshold": float(args.threshold),
+        "k_history": int(args.k_history),
+        "num_sub_bins": int(args.num_sub_bins),
         "lr": float(args.lr),
         "weight_decay": float(args.weight_decay),
         "epochs_max": int(args.epochs),
@@ -153,7 +167,7 @@ def main() -> int:
             "test": int(test_idx.size),
         },
     }
-    save_json_results(args.results_json, model="trained_snn", config=config, rows=rows)
+    save_json_results(args.results_json, model=model_name, config=config, rows=rows)
     logger.info("wrote %s and %s", args.results_csv, args.results_json)
     return 0
 

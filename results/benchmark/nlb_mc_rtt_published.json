@@ -1,0 +1,43 @@
+{
+  "dataset": "NLB_MC_RTT",
+  "metric": "velocity_r2",
+  "notes": "Published velocity-R\u00b2 numbers on the Neural Latents Benchmark MC_RTT held-in split. These are the numbers reviewers compare against. Our pipeline's headline ridge_lag4 result is in the same ballpark as the strong linear / GPFA baselines; the Transformer (NDT) and latent-DS (AutoLFADS / MINT) families occupy the top of the leaderboard.",
+  "entries": [
+    {
+      "decoder": "Smoothed spikes (Gaussian kernel) + Wiener filter",
+      "vel_r2": 0.56,
+      "source": "Pei et al. NeurIPS 2021, NLB MC_RTT held-in",
+      "notes": "Lower-bound benchmark distributed by the NLB challenge."
+    },
+    {
+      "decoder": "GPFA",
+      "vel_r2": 0.49,
+      "source": "Pei et al. NeurIPS 2021, NLB MC_RTT held-in",
+      "notes": "Gaussian-Process Factor Analysis, low-dimensional latents."
+    },
+    {
+      "decoder": "SLDS",
+      "vel_r2": 0.58,
+      "source": "Pei et al. NeurIPS 2021, NLB MC_RTT held-in",
+      "notes": "Switching Linear Dynamical System latent model."
+    },
+    {
+      "decoder": "NDT (Neural Data Transformer)",
+      "vel_r2": 0.62,
+      "source": "Pei et al. NeurIPS 2021, NLB MC_RTT held-in",
+      "notes": "Transformer-based latent model. Best non-AutoLFADS baseline."
+    },
+    {
+      "decoder": "AutoLFADS",
+      "vel_r2": 0.665,
+      "source": "Keshtkaran et al. Nat Methods 2022 / NLB leaderboard",
+      "notes": "Latent factor analysis via dynamical systems."
+    },
+    {
+      "decoder": "MINT (Most-likely Inference via Neural Transport)",
+      "vel_r2": 0.69,
+      "source": "Karpowicz et al. 2023, NLB leaderboard",
+      "notes": "Current state-of-the-art on the NLB MC_RTT leaderboard."
+    }
+  ]
+}
