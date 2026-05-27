@@ -47,13 +47,14 @@ def jitter_event_times(
     out_t: list[np.ndarray] = []
     out_n: list[np.ndarray] = []
     eps = 1e-4
-    upper = float(bin_size_ms) - eps
     for times, neurons in zip(event_times, event_neurons, strict=True):
         n = times.size
         if n == 0:
             out_t.append(times)
             out_n.append(neurons)
             continue
+        # Headroom so the per-rank eps bumps still fit inside the bin after sorting.
+        upper = float(bin_size_ms) - eps * n
         jitter = rng.normal(scale=sigma_ms, size=n).astype(times.dtype)
         new_t = np.clip(times + jitter, 0.0, upper)
         order = np.argsort(new_t, kind="stable")
