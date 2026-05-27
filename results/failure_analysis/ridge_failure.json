@@ -1,0 +1,42 @@
+{
+  "model": "ridge",
+  "n_test_bins": 1947,
+  "overall_r2_joint": 0.2326725721359253,
+  "median_speed": 18.28912925720215,
+  "r2_above_median": 0.28938543796539307,
+  "r2_below_median": 0.9432871341705322,
+  "per_quartile": [
+    {
+      "quartile": 0,
+      "speed_lo": 0.047678422182798386,
+      "speed_hi": 4.81009316444397,
+      "n_bins": 487,
+      "r2_global_baseline": 0.9751603007316589,
+      "rmse_relative_to_global_std": 0.3151314383478661
+    },
+    {
+      "quartile": 1,
+      "speed_lo": 4.81009316444397,
+      "speed_hi": 18.28912925720215,
+      "n_bins": 486,
+      "r2_global_baseline": 0.9681268334388733,
+      "rmse_relative_to_global_std": 0.3573366500305734
+    },
+    {
+      "quartile": 2,
+      "speed_lo": 18.28912925720215,
+      "speed_hi": 78.35329818725586,
+      "n_bins": 487,
+      "r2_global_baseline": 0.9371945858001709,
+      "rmse_relative_to_global_std": 0.5010916360823846
+    },
+    {
+      "quartile": 3,
+      "speed_lo": 78.35329818725586,
+      "speed_hi": 390.07415771484375,
+      "n_bins": 487,
+      "r2_global_baseline": 0.35219091176986694,
+      "rmse_relative_to_global_std": 1.6093186408534494
+    }
+  ]
+}

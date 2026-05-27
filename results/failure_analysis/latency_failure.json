@@ -1,0 +1,42 @@
+{
+  "model": "latency",
+  "n_test_bins": 1947,
+  "overall_r2_joint": 0.05064493417739868,
+  "median_speed": 18.28912925720215,
+  "r2_above_median": 0.07473951578140259,
+  "r2_below_median": 0.9759054183959961,
+  "per_quartile": [
+    {
+      "quartile": 0,
+      "speed_lo": 0.047678422182798386,
+      "speed_hi": 4.81009316444397,
+      "n_bins": 487,
+      "r2_global_baseline": 0.989772379398346,
+      "rmse_relative_to_global_std": 0.2022117452424329
+    },
+    {
+      "quartile": 1,
+      "speed_lo": 4.81009316444397,
+      "speed_hi": 18.28912925720215,
+      "n_bins": 486,
+      "r2_global_baseline": 0.9861330986022949,
+      "rmse_relative_to_global_std": 0.23569742546182573
+    },
+    {
+      "quartile": 2,
+      "speed_lo": 18.28912925720215,
+      "speed_hi": 78.35329818725586,
+      "n_bins": 487,
+      "r2_global_baseline": 0.940988302230835,
+      "rmse_relative_to_global_std": 0.4857216919522706
+    },
+    {
+      "quartile": 3,
+      "speed_lo": 78.35329818725586,
+      "speed_hi": 390.07415771484375,
+      "n_bins": 487,
+      "r2_global_baseline": 0.13375115394592285,
+      "rmse_relative_to_global_std": 1.8609719957580513
+    }
+  ]
+}

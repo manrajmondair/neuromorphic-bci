@@ -1,0 +1,42 @@
+{
+  "model": "snn",
+  "n_test_bins": 1947,
+  "overall_r2_joint": 0.021124064922332764,
+  "median_speed": 18.28912925720215,
+  "r2_above_median": 0.05520296096801758,
+  "r2_below_median": 0.9659211039543152,
+  "per_quartile": [
+    {
+      "quartile": 0,
+      "speed_lo": 0.047678422182798386,
+      "speed_hi": 4.81009316444397,
+      "n_bins": 487,
+      "r2_global_baseline": 0.9864898920059204,
+      "rmse_relative_to_global_std": 0.23240615661628533
+    },
+    {
+      "quartile": 1,
+      "speed_lo": 4.81009316444397,
+      "speed_hi": 18.28912925720215,
+      "n_bins": 486,
+      "r2_global_baseline": 0.97943115234375,
+      "rmse_relative_to_global_std": 0.2870579568042231
+    },
+    {
+      "quartile": 2,
+      "speed_lo": 18.28912925720215,
+      "speed_hi": 78.35329818725586,
+      "n_bins": 487,
+      "r2_global_baseline": 0.9353225827217102,
+      "rmse_relative_to_global_std": 0.5085046632600232
+    },
+    {
+      "quartile": 3,
+      "speed_lo": 78.35329818725586,
+      "speed_hi": 390.07415771484375,
+      "n_bins": 487,
+      "r2_global_baseline": 0.1198803186416626,
+      "rmse_relative_to_global_std": 1.8758122896187241
+    }
+  ]
+}
