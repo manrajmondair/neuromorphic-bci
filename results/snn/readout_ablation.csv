@@ -1,0 +1,13 @@
+model,event_budget,seed,r2_vx,r2_vy,r2_joint,n_events_used,n_events_total,notes
+snn_readout_ridge,1.0,0,0.14036605108478462,0.13580023181845047,0.13866544182893292,,,snn encoder fixed; readout swapped
+snn_readout_sgd_linear,1.0,0,0.15153877025470652,0.14418013006205177,0.14879793210669146,,,snn encoder fixed; readout swapped
+snn_readout_mlp,1.0,0,0.1990337593990057,0.1920708162770639,0.19644030468027562,,,snn encoder fixed; readout swapped
+snn_readout_ridge,0.5,0,0.06950834264228756,0.03734184362930859,0.05752743784538461,,,snn encoder fixed; readout swapped
+snn_readout_sgd_linear,0.5,0,0.07824348139568293,0.05676917707399465,0.07024504813273891,,,snn encoder fixed; readout swapped
+snn_readout_mlp,0.5,0,0.09284776804626249,0.07240449799660797,0.0852333592757133,,,snn encoder fixed; readout swapped
+snn_readout_ridge,0.25,0,0.03367313922215864,-1.9016062621002305e-05,0.021123980399915032,,,snn encoder fixed; readout swapped
+snn_readout_sgd_linear,0.25,0,0.052121765813999965,0.036905840963670444,0.04645436175628548,,,snn encoder fixed; readout swapped
+snn_readout_mlp,0.25,0,0.05770313392639281,0.04455277525369783,0.05280508160061392,,,snn encoder fixed; readout swapped
+snn_readout_ridge,0.1,0,-1.0341544978809125e-05,-0.00027306729536658025,-0.00010819777116699569,,,snn encoder fixed; readout swapped
+snn_readout_sgd_linear,0.1,0,-5.717791949688689e-06,-0.0002613522509071764,-0.00010093275812739222,,,snn encoder fixed; readout swapped
+snn_readout_mlp,0.1,0,-5.905275455297954e-06,-0.00027374191105167256,-0.00010566512905052505,,,snn encoder fixed; readout swapped
