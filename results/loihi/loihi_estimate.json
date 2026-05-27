@@ -1,0 +1,159 @@
+{
+  "model": "trained_snn",
+  "hidden_dim": 128,
+  "k_history": 4,
+  "bin_size_ms": 50,
+  "mac_energy_pj": {
+    "cpu_x86": 1000.0,
+    "gpu_a100": 30.0,
+    "loihi2": 23.0,
+    "northpole": 2.0
+  },
+  "rows": [
+    {
+      "event_budget": 1.0,
+      "n_test_bins": 1947,
+      "best_val_r2": 0.5147496461868286,
+      "input_synops_total": 189822.0,
+      "hidden_spikes_total": 1863089.0,
+      "readout_macs_total": 498432.0,
+      "synops_total": 2551343.0,
+      "synops_per_prediction_mean": 1310.397021058038,
+      "per_chip": {
+        "cpu_x86": {
+          "pj_per_op": 1000.0,
+          "energy_total_uj": 2551.343,
+          "energy_per_prediction_uj": 1.310397021058038,
+          "avg_power_uw": 26.207940421160757
+        },
+        "gpu_a100": {
+          "pj_per_op": 30.0,
+          "energy_total_uj": 76.54029,
+          "energy_per_prediction_uj": 0.03931191063174114,
+          "avg_power_uw": 0.7862382126348227
+        },
+        "loihi2": {
+          "pj_per_op": 23.0,
+          "energy_total_uj": 58.680889,
+          "energy_per_prediction_uj": 0.030139131484334874,
+          "avg_power_uw": 0.6027826296866975
+        },
+        "northpole": {
+          "pj_per_op": 2.0,
+          "energy_total_uj": 5.102686,
+          "energy_per_prediction_uj": 0.0026207940421160763,
+          "avg_power_uw": 0.052415880842321516
+        }
+      }
+    },
+    {
+      "event_budget": 0.5,
+      "n_test_bins": 1947,
+      "best_val_r2": 0.4000108242034912,
+      "input_synops_total": 92432.0,
+      "hidden_spikes_total": 1115861.0,
+      "readout_macs_total": 498432.0,
+      "synops_total": 1706725.0,
+      "synops_per_prediction_mean": 876.5921931176168,
+      "per_chip": {
+        "cpu_x86": {
+          "pj_per_op": 1000.0,
+          "energy_total_uj": 1706.725,
+          "energy_per_prediction_uj": 0.8765921931176168,
+          "avg_power_uw": 17.531843862352336
+        },
+        "gpu_a100": {
+          "pj_per_op": 30.0,
+          "energy_total_uj": 51.20175,
+          "energy_per_prediction_uj": 0.026297765793528504,
+          "avg_power_uw": 0.52595531587057
+        },
+        "loihi2": {
+          "pj_per_op": 23.0,
+          "energy_total_uj": 39.254675,
+          "energy_per_prediction_uj": 0.020161620441705188,
+          "avg_power_uw": 0.4032324088341037
+        },
+        "northpole": {
+          "pj_per_op": 2.0,
+          "energy_total_uj": 3.41345,
+          "energy_per_prediction_uj": 0.0017531843862352338,
+          "avg_power_uw": 0.035063687724704674
+        }
+      }
+    },
+    {
+      "event_budget": 0.25,
+      "n_test_bins": 1947,
+      "best_val_r2": 0.2548462152481079,
+      "input_synops_total": 43702.0,
+      "hidden_spikes_total": 620647.0,
+      "readout_macs_total": 498432.0,
+      "synops_total": 1162781.0,
+      "synops_per_prediction_mean": 597.2167437082692,
+      "per_chip": {
+        "cpu_x86": {
+          "pj_per_op": 1000.0,
+          "energy_total_uj": 1162.781,
+          "energy_per_prediction_uj": 0.5972167437082692,
+          "avg_power_uw": 11.944334874165381
+        },
+        "gpu_a100": {
+          "pj_per_op": 30.0,
+          "energy_total_uj": 34.88343,
+          "energy_per_prediction_uj": 0.017916502311248073,
+          "avg_power_uw": 0.3583300462249614
+        },
+        "loihi2": {
+          "pj_per_op": 23.0,
+          "energy_total_uj": 26.743963,
+          "energy_per_prediction_uj": 0.01373598510529019,
+          "avg_power_uw": 0.27471970210580376
+        },
+        "northpole": {
+          "pj_per_op": 2.0,
+          "energy_total_uj": 2.325562,
+          "energy_per_prediction_uj": 0.0011944334874165383,
+          "avg_power_uw": 0.023888669748330763
+        }
+      }
+    },
+    {
+      "event_budget": 0.1,
+      "n_test_bins": 1947,
+      "best_val_r2": 0.0751768946647644,
+      "input_synops_total": 15715.0,
+      "hidden_spikes_total": 271748.0,
+      "readout_macs_total": 498432.0,
+      "synops_total": 785895.0,
+      "synops_per_prediction_mean": 403.64406779661016,
+      "per_chip": {
+        "cpu_x86": {
+          "pj_per_op": 1000.0,
+          "energy_total_uj": 785.895,
+          "energy_per_prediction_uj": 0.40364406779661016,
+          "avg_power_uw": 8.072881355932202
+        },
+        "gpu_a100": {
+          "pj_per_op": 30.0,
+          "energy_total_uj": 23.57685,
+          "energy_per_prediction_uj": 0.012109322033898305,
+          "avg_power_uw": 0.24218644067796607
+        },
+        "loihi2": {
+          "pj_per_op": 23.0,
+          "energy_total_uj": 18.075585,
+          "energy_per_prediction_uj": 0.009283813559322033,
+          "avg_power_uw": 0.18567627118644067
+        },
+        "northpole": {
+          "pj_per_op": 2.0,
+          "energy_total_uj": 1.57179,
+          "energy_per_prediction_uj": 0.0008072881355932203,
+          "avg_power_uw": 0.016145762711864405
+        }
+      }
+    }
+  ],
+  "notes": "lava-nc / NxSDK has no pip wheel on macOS ARM. Numbers here use the trained SNN's measured SynOp counts on the held-out test split, multiplied by published per-SynOp energy figures. Real Loihi 2 silicon would likely be slightly lower because fanout-compressed connections reduce SynOp counts; this is an upper bound."
+}

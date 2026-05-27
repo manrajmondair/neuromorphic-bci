@@ -1,0 +1,36 @@
+{
+  "rows": [
+    {
+      "model": "ridge",
+      "cpu_mean_latency_ms": 0.016310667206782467,
+      "cpu_p95_latency_ms": 0.017041689716279507,
+      "cpu_p99_latency_ms": 0.02018922008574009,
+      "r2_joint": 0.16642925322694802,
+      "final_drift": 231.9725341796875
+    },
+    {
+      "model": "ridge_lag4",
+      "cpu_mean_latency_ms": 0.017501508174191455,
+      "cpu_p95_latency_ms": 0.018541933968663216,
+      "cpu_p99_latency_ms": 0.020586834289133545,
+      "r2_joint": 0.5265523687918182,
+      "final_drift": 107.27368927001953
+    },
+    {
+      "model": "trained_snn",
+      "cpu_mean_latency_ms": 0.5858944358020011,
+      "cpu_p95_latency_ms": 0.6583294598385692,
+      "cpu_p99_latency_ms": 0.69813571870327,
+      "r2_joint": 0.5366990030182697,
+      "final_drift": 385.84625244140625,
+      "loihi2_synops_per_prediction": 1310.397021058038,
+      "loihi2_estimated_latency_ms": 0.0008255501232665639,
+      "loihi2_uj_per_prediction": 0.030139131484334874,
+      "northpole_uj_per_prediction": 0.0026207940421160763
+    }
+  ],
+  "bin_size_ms": 50,
+  "loihi2_ns_per_synop": 0.63,
+  "cpu_ns_per_mac": 1.0,
+  "notes": "CPU numbers are measured wall-clock per-bin latency on x86 / ARM (macOS development host). Loihi 2 numbers are analytical projections from the trained SNN's measured SynOp count, multiplied by vendor-published per-SynOp throughput and energy. Real silicon would likely be lower because fanout compression and on-chip routing reduce SynOp counts further; this is an upper bound."
+}

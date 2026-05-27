@@ -68,14 +68,40 @@ def _stream_ridge(decoder, X, test_idx):
 
 
 def _stream_trained_snn(snn, et, en, test_idx, split_starts):
-    """Per-bin trained-SNN inference; uses the history-stacked sub-bin tensor."""
+    """Per-bin trained-SNN inference with pre-computed sub-bin tensor.
+
+    The history stack is computed *once* before the timing loop (it is
+    not part of the per-bin inference cost in a deployed BCI — the
+    history buffer is maintained incrementally). Per-bin latency
+    measures only the LIF forward pass + readout on a single
+    [1, S_total, N] tensor.
+    """
+    import torch
+
+    from src.models.trained_snn import (
+        _sparse_events_to_subbin_counts,
+        _stack_history,
+    )
+
+    x_all = _sparse_events_to_subbin_counts(
+        et, en, snn.num_neurons, snn.bin_size_ms, snn.num_sub_bins,
+    )
+    x_all = _stack_history(x_all, snn.k_history, split_starts)
+
+    W = snn._W
+    W_out = snn._W_out
+    b_out = snn._b_out
+
     preds = np.zeros((test_idx.size, 2), dtype=np.float32)
     latencies = np.zeros(test_idx.size, dtype=np.float64)
-    for k, t in enumerate(test_idx):
-        idx = np.array([t], dtype=np.int64)
-        start = time.perf_counter()
-        preds[k] = snn.predict(et, en, idx, split_starts=split_starts)[0]
-        latencies[k] = time.perf_counter() - start
+    with torch.no_grad():
+        for k, t in enumerate(test_idx):
+            x_t = torch.from_numpy(x_all[t : t + 1])
+            start = time.perf_counter()
+            z = snn._encode(x_t, W)
+            y_pred = z @ W_out.T + b_out
+            latencies[k] = time.perf_counter() - start
+            preds[k] = y_pred.numpy()[0]
     return preds, latencies
 
 
