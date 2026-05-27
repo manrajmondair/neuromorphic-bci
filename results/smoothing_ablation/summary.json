@@ -1,0 +1,117 @@
+{
+  "sigmas_bins": [
+    0.0,
+    1.0,
+    2.0
+  ],
+  "rows": [
+    {
+      "model": "ridge",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.04435795051796487,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 0.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.14406529439997606,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 0.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.21841334589870498,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 0.0,
+      "lag_bins": 4
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.5011264210569831,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 0.0,
+      "lag_bins": 4
+    },
+    {
+      "model": "ridge",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.048979192579675424,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 1.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.16642925322694802,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 1.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.23267256272035686,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 1.0,
+      "lag_bins": 4
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.5265523687918182,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 1.0,
+      "lag_bins": 4
+    },
+    {
+      "model": "ridge",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.05622217082753156,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 2.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.20381317278543976,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 2.0,
+      "lag_bins": 0
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.24877249745782226,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 2.0,
+      "lag_bins": 4
+    },
+    {
+      "model": "ridge_lag4",
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.5519776877371623,
+      "std_r2_joint": 0.0,
+      "n_seeds": 1,
+      "sigma_bins": 2.0,
+      "lag_bins": 4
+    }
+  ]
+}
