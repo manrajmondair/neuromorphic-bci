@@ -7,6 +7,12 @@
   "num_bins": 12982,
   "macs_per_prediction_dense": 196,
   "dense_macs_total": 2544472,
+  "mac_energy_pj": {
+    "cpu_x86": 1000.0,
+    "gpu_a100": 30.0,
+    "loihi2": 23.0,
+    "northpole": 2.0
+  },
   "budgets": [
     {
       "event_budget": 1.0,
@@ -21,7 +27,52 @@
       "dense_macs": 2544472,
       "event_driven_macs": 539538,
       "macs_avoided": 2004934,
-      "macs_avoided_fraction": 0.7879567941796962
+      "macs_avoided_fraction": 0.7879567941796962,
+      "energy": {
+        "per_chip": {
+          "cpu_x86": {
+            "pj_per_mac": 1000.0,
+            "dense_energy_uj": 2544.472,
+            "event_driven_energy_uj": 539.538,
+            "dense_uj_per_prediction": 0.196,
+            "event_driven_uj_per_prediction": 0.04156046834077954,
+            "dense_avg_uw": 3.9200000000000004,
+            "event_driven_avg_uw": 0.8312093668155908,
+            "energy_avoided_fraction": 0.7879567941796962
+          },
+          "gpu_a100": {
+            "pj_per_mac": 30.0,
+            "dense_energy_uj": 76.33416,
+            "event_driven_energy_uj": 16.18614,
+            "dense_uj_per_prediction": 0.00588,
+            "event_driven_uj_per_prediction": 0.0012468140502233864,
+            "dense_avg_uw": 0.1176,
+            "event_driven_avg_uw": 0.024936281004467726,
+            "energy_avoided_fraction": 0.7879567941796962
+          },
+          "loihi2": {
+            "pj_per_mac": 23.0,
+            "dense_energy_uj": 58.522856,
+            "event_driven_energy_uj": 12.409374,
+            "dense_uj_per_prediction": 0.004508,
+            "event_driven_uj_per_prediction": 0.0009558907718379294,
+            "dense_avg_uw": 0.09015999999999999,
+            "event_driven_avg_uw": 0.019117815436758587,
+            "energy_avoided_fraction": 0.7879567941796962
+          },
+          "northpole": {
+            "pj_per_mac": 2.0,
+            "dense_energy_uj": 5.088944,
+            "event_driven_energy_uj": 1.079076,
+            "dense_uj_per_prediction": 0.000392,
+            "event_driven_uj_per_prediction": 8.312093668155907e-05,
+            "dense_avg_uw": 0.00784,
+            "event_driven_avg_uw": 0.0016624187336311816,
+            "energy_avoided_fraction": 0.7879567941796962
+          }
+        },
+        "duration_s": 649.1
+      }
     },
     {
       "event_budget": 0.5,
@@ -36,7 +87,52 @@
       "dense_macs": 2544472,
       "event_driven_macs": 276178,
       "macs_avoided": 2268294,
-      "macs_avoided_fraction": 0.8914596034069151
+      "macs_avoided_fraction": 0.8914596034069151,
+      "energy": {
+        "per_chip": {
+          "cpu_x86": {
+            "pj_per_mac": 1000.0,
+            "dense_energy_uj": 2544.472,
+            "event_driven_energy_uj": 276.178,
+            "dense_uj_per_prediction": 0.196,
+            "event_driven_uj_per_prediction": 0.021273917732244647,
+            "dense_avg_uw": 3.9200000000000004,
+            "event_driven_avg_uw": 0.4254783546448929,
+            "energy_avoided_fraction": 0.8914596034069151
+          },
+          "gpu_a100": {
+            "pj_per_mac": 30.0,
+            "dense_energy_uj": 76.33416,
+            "event_driven_energy_uj": 8.28534,
+            "dense_uj_per_prediction": 0.00588,
+            "event_driven_uj_per_prediction": 0.0006382175319673394,
+            "dense_avg_uw": 0.1176,
+            "event_driven_avg_uw": 0.012764350639346786,
+            "energy_avoided_fraction": 0.8914596034069151
+          },
+          "loihi2": {
+            "pj_per_mac": 23.0,
+            "dense_energy_uj": 58.522856,
+            "event_driven_energy_uj": 6.352094,
+            "dense_uj_per_prediction": 0.004508,
+            "event_driven_uj_per_prediction": 0.0004893001078416269,
+            "dense_avg_uw": 0.09015999999999999,
+            "event_driven_avg_uw": 0.009786002156832537,
+            "energy_avoided_fraction": 0.8914596034069151
+          },
+          "northpole": {
+            "pj_per_mac": 2.0,
+            "dense_energy_uj": 5.088944,
+            "event_driven_energy_uj": 0.552356,
+            "dense_uj_per_prediction": 0.000392,
+            "event_driven_uj_per_prediction": 4.254783546448929e-05,
+            "dense_avg_uw": 0.00784,
+            "event_driven_avg_uw": 0.0008509567092897858,
+            "energy_avoided_fraction": 0.8914596034069151
+          }
+        },
+        "duration_s": 649.1
+      }
     },
     {
       "event_budget": 0.25,
@@ -51,7 +147,52 @@
       "dense_macs": 2544472,
       "event_driven_macs": 144612,
       "macs_avoided": 2399860,
-      "macs_avoided_fraction": 0.9431662050122775
+      "macs_avoided_fraction": 0.9431662050122775,
+      "energy": {
+        "per_chip": {
+          "cpu_x86": {
+            "pj_per_mac": 1000.0,
+            "dense_energy_uj": 2544.472,
+            "event_driven_energy_uj": 144.612,
+            "dense_uj_per_prediction": 0.196,
+            "event_driven_uj_per_prediction": 0.01113942381759359,
+            "dense_avg_uw": 3.9200000000000004,
+            "event_driven_avg_uw": 0.2227884763518718,
+            "energy_avoided_fraction": 0.9431662050122775
+          },
+          "gpu_a100": {
+            "pj_per_mac": 30.0,
+            "dense_energy_uj": 76.33416,
+            "event_driven_energy_uj": 4.33836,
+            "dense_uj_per_prediction": 0.00588,
+            "event_driven_uj_per_prediction": 0.0003341827145278077,
+            "dense_avg_uw": 0.1176,
+            "event_driven_avg_uw": 0.0066836542905561545,
+            "energy_avoided_fraction": 0.9431662050122775
+          },
+          "loihi2": {
+            "pj_per_mac": 23.0,
+            "dense_energy_uj": 58.522856,
+            "event_driven_energy_uj": 3.326076,
+            "dense_uj_per_prediction": 0.004508,
+            "event_driven_uj_per_prediction": 0.0002562067478046526,
+            "dense_avg_uw": 0.09015999999999999,
+            "event_driven_avg_uw": 0.005124134956093052,
+            "energy_avoided_fraction": 0.9431662050122775
+          },
+          "northpole": {
+            "pj_per_mac": 2.0,
+            "dense_energy_uj": 5.088944,
+            "event_driven_energy_uj": 0.289224,
+            "dense_uj_per_prediction": 0.000392,
+            "event_driven_uj_per_prediction": 2.227884763518718e-05,
+            "dense_avg_uw": 0.00784,
+            "event_driven_avg_uw": 0.0004455769527037436,
+            "energy_avoided_fraction": 0.9431662050122775
+          }
+        },
+        "duration_s": 649.1
+      }
     },
     {
       "event_budget": 0.1,
@@ -66,8 +207,53 @@
       "dense_macs": 2544472,
       "event_driven_macs": 68372,
       "macs_avoided": 2476100,
-      "macs_avoided_fraction": 0.973129199299501
+      "macs_avoided_fraction": 0.973129199299501,
+      "energy": {
+        "per_chip": {
+          "cpu_x86": {
+            "pj_per_mac": 1000.0,
+            "dense_energy_uj": 2544.472,
+            "event_driven_energy_uj": 68.372,
+            "dense_uj_per_prediction": 0.196,
+            "event_driven_uj_per_prediction": 0.005266676937297797,
+            "dense_avg_uw": 3.9200000000000004,
+            "event_driven_avg_uw": 0.10533353874595594,
+            "energy_avoided_fraction": 0.973129199299501
+          },
+          "gpu_a100": {
+            "pj_per_mac": 30.0,
+            "dense_energy_uj": 76.33416,
+            "event_driven_energy_uj": 2.05116,
+            "dense_uj_per_prediction": 0.00588,
+            "event_driven_uj_per_prediction": 0.0001580003081189339,
+            "dense_avg_uw": 0.1176,
+            "event_driven_avg_uw": 0.0031600061623786777,
+            "energy_avoided_fraction": 0.973129199299501
+          },
+          "loihi2": {
+            "pj_per_mac": 23.0,
+            "dense_energy_uj": 58.522856,
+            "event_driven_energy_uj": 1.572556,
+            "dense_uj_per_prediction": 0.004508,
+            "event_driven_uj_per_prediction": 0.00012113356955784934,
+            "dense_avg_uw": 0.09015999999999999,
+            "event_driven_avg_uw": 0.0024226713911569865,
+            "energy_avoided_fraction": 0.973129199299501
+          },
+          "northpole": {
+            "pj_per_mac": 2.0,
+            "dense_energy_uj": 5.088944,
+            "event_driven_energy_uj": 0.136744,
+            "dense_uj_per_prediction": 0.000392,
+            "event_driven_uj_per_prediction": 1.0533353874595594e-05,
+            "dense_avg_uw": 0.00784,
+            "event_driven_avg_uw": 0.0002106670774919119,
+            "energy_avoided_fraction": 0.973129199299501
+          }
+        },
+        "duration_s": 649.1
+      }
     }
   ],
-  "notes": "Dense MAC count = 2\u00b7N\u00b7T (X @ W + b for X[1,N], W[N,2], T bins). Event-driven MAC count = 2\u00b7E + 2\u00b7T (per-spike accumulator update plus per-bin bias). MACs avoided = dense \u2212 event_driven; this is the secondary efficiency number reported alongside R\u00b2."
+  "notes": "Dense MAC count = 2\u00b7N\u00b7T (X @ W + b for X[1,N], W[N,2], T bins). Event-driven MAC count = 2\u00b7E + 2\u00b7T (per-spike accumulator update plus per-bin bias). Energy is arithmetic only \u2014 no memory traffic, leakage, or wireless TX. Per-chip pJ/MAC values are vendor or literature figures, see mac_energy_pj field."
 }

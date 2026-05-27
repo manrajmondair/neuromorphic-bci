@@ -49,12 +49,42 @@ def test_profile_event_budget_uses_kept_events(mock_data):
         mock_data["event_neurons"],
         fraction=f,
         num_neurons=int(mock_data["num_neurons"]),
+        bin_size_ms=int(mock_data["bin_size_ms"]),
     )
     expected_events = sum(
         max(1, int(np.floor(f * t.size))) if t.size else 0
         for t in mock_data["event_times"]
     )
     assert profile["events_total"] == expected_events
+
+
+def test_energy_table_scales_with_pj_per_mac(mock_data):
+    """Doubling pj/MAC should double dense_energy_uj exactly."""
+    from src.evaluation.efficiency_tracker import MAC_ENERGY_PJ, energy_table
+
+    table = energy_table(
+        dense_macs=1_000_000,
+        event_driven_macs=100_000,
+        num_bins=int(mock_data["spike_counts"].shape[0]),
+        bin_size_ms=int(mock_data["bin_size_ms"]),
+    )
+    cpu = table["per_chip"]["cpu_x86"]
+    npole = table["per_chip"]["northpole"]
+    ratio_pj = MAC_ENERGY_PJ["cpu_x86"] / MAC_ENERGY_PJ["northpole"]
+    ratio_uj = cpu["dense_energy_uj"] / npole["dense_energy_uj"]
+    assert abs(ratio_uj - ratio_pj) < 1e-9, (ratio_uj, ratio_pj)
+
+
+def test_energy_avoided_fraction_matches_macs_avoided_fraction(mock_data):
+    """For a single chip, avoided fraction is just (dense - edriven) / dense — chip-independent."""
+    from src.evaluation.efficiency_tracker import energy_table
+
+    table = energy_table(
+        dense_macs=2_000_000, event_driven_macs=300_000,
+        num_bins=100, bin_size_ms=50,
+    )
+    fractions = {chip: row["energy_avoided_fraction"] for chip, row in table["per_chip"].items()}
+    assert len(set(round(f, 12) for f in fractions.values())) == 1
 
 
 def test_compute_efficiency_summary_monotonic(mock_data):
