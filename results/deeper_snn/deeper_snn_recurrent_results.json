@@ -1,0 +1,102 @@
+{
+  "model": "deeper_snn_recurrent",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": {
+    "processed_path": "data/processed/processed_mc_rtt.npz",
+    "bin_size_ms": 50,
+    "num_neurons": 98,
+    "hidden_dims": [
+      128,
+      64
+    ],
+    "recurrent": true,
+    "k_history": 4,
+    "threshold": 0.3,
+    "tau_ms": 10.0,
+    "lr": 0.005,
+    "weight_decay": 0.0001,
+    "epochs_max": 40,
+    "patience": 8,
+    "event_budgets": [
+      1.0,
+      0.5,
+      0.25,
+      0.1
+    ],
+    "seeds": [
+      0
+    ],
+    "n_boot": 100
+  },
+  "results": [
+    {
+      "model": "deeper_snn_recurrent",
+      "event_budget": 1.0,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": true,
+      "r2_vx": 0.18759783651996187,
+      "r2_vy": 0.17492932935540306,
+      "r2_joint": 0.18287925716209574,
+      "r2_joint_ci_lo": 0.1635560302875363,
+      "r2_joint_ci_hi": 0.19723063247051545,
+      "n_boot": 100,
+      "best_val_r2": 0.1985454559326172
+    },
+    {
+      "model": "deeper_snn_recurrent",
+      "event_budget": 0.5,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": true,
+      "r2_vx": 0.07813638525877487,
+      "r2_vy": 0.014130726233398061,
+      "r2_joint": 0.054296498084959066,
+      "r2_joint_ci_lo": 0.043176712411396576,
+      "r2_joint_ci_hi": 0.06289063698482365,
+      "n_boot": 100,
+      "best_val_r2": 0.055177927017211914
+    },
+    {
+      "model": "deeper_snn_recurrent",
+      "event_budget": 0.25,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": true,
+      "r2_vx": 0.1499191328419215,
+      "r2_vy": 0.047942736261877394,
+      "r2_joint": 0.11193646340488539,
+      "r2_joint_ci_lo": 0.09245691884257047,
+      "r2_joint_ci_hi": 0.12825006171849668,
+      "n_boot": 100,
+      "best_val_r2": 0.11019599437713623
+    },
+    {
+      "model": "deeper_snn_recurrent",
+      "event_budget": 0.1,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": true,
+      "r2_vx": 0.02142919405995103,
+      "r2_vy": 0.006864607558014435,
+      "r2_joint": 0.016004390937436774,
+      "r2_joint_ci_lo": 0.008548290026835728,
+      "r2_joint_ci_hi": 0.023409333500615824,
+      "n_boot": 100,
+      "best_val_r2": 0.01754748821258545
+    }
+  ]
+}

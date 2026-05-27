@@ -1,0 +1,102 @@
+{
+  "model": "deeper_snn",
+  "metric": "velocity_r2",
+  "dataset": "NLB_MC_RTT",
+  "config": {
+    "processed_path": "data/processed/processed_mc_rtt.npz",
+    "bin_size_ms": 50,
+    "num_neurons": 98,
+    "hidden_dims": [
+      128,
+      64
+    ],
+    "recurrent": false,
+    "k_history": 4,
+    "threshold": 0.3,
+    "tau_ms": 10.0,
+    "lr": 0.005,
+    "weight_decay": 0.0001,
+    "epochs_max": 50,
+    "patience": 10,
+    "event_budgets": [
+      1.0,
+      0.5,
+      0.25,
+      0.1
+    ],
+    "seeds": [
+      0
+    ],
+    "n_boot": 150
+  },
+  "results": [
+    {
+      "model": "deeper_snn",
+      "event_budget": 1.0,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": false,
+      "r2_vx": 0.528336596776829,
+      "r2_vy": 0.5250037178907272,
+      "r2_joint": 0.5270952150331123,
+      "r2_joint_ci_lo": 0.49973226475343807,
+      "r2_joint_ci_hi": 0.5487895231719663,
+      "n_boot": 150,
+      "best_val_r2": 0.5021346807479858
+    },
+    {
+      "model": "deeper_snn",
+      "event_budget": 0.5,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": false,
+      "r2_vx": 0.4156055706641907,
+      "r2_vy": 0.31478873504259786,
+      "r2_joint": 0.3780547974507318,
+      "r2_joint_ci_lo": 0.3474014989534907,
+      "r2_joint_ci_hi": 0.4043486187090708,
+      "n_boot": 150,
+      "best_val_r2": 0.3720831274986267
+    },
+    {
+      "model": "deeper_snn",
+      "event_budget": 0.25,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": false,
+      "r2_vx": 0.236342586989583,
+      "r2_vy": 0.17910570842277074,
+      "r2_joint": 0.21502383567927785,
+      "r2_joint_ci_lo": 0.18841921977938086,
+      "r2_joint_ci_hi": 0.24060619443453607,
+      "n_boot": 150,
+      "best_val_r2": 0.25200003385543823
+    },
+    {
+      "model": "deeper_snn",
+      "event_budget": 0.1,
+      "seed": 0,
+      "hidden_dims": [
+        128,
+        64
+      ],
+      "recurrent": false,
+      "r2_vx": 0.13424571012009112,
+      "r2_vy": 0.07456112305394769,
+      "r2_joint": 0.11201527232226294,
+      "r2_joint_ci_lo": 0.08601566104926026,
+      "r2_joint_ci_hi": 0.13248713886307395,
+      "n_boot": 150,
+      "best_val_r2": 0.07935285568237305
+    }
+  ]
+}
