@@ -29,14 +29,20 @@ logger = logging.getLogger(__name__)
 
 MODEL_STYLES: dict[str, dict] = {
     "ridge": {"color": "#1f77b4", "marker": "o", "linestyle": "-"},
+    "ridge_lag4": {"color": "#2ca02c", "marker": "^", "linestyle": "-"},
+    "latency": {"color": "#9467bd", "marker": "D", "linestyle": "-"},
     "snn": {"color": "#d62728", "marker": "s", "linestyle": "-"},
+    "trained_snn": {"color": "#ff7f0e", "marker": "P", "linestyle": "-"},
     "snn_shuffle": {"color": "#7f7f7f", "marker": "x", "linestyle": "--"},
 }
 
 MODEL_DISPLAY_NAMES: dict[str, str] = {
-    "ridge": "Ridge (spike counts)",
-    "snn": "Sparse latency SNN",
-    "snn_shuffle": "Shuffled-order SNN (control)",
+    "ridge": "Ridge (single-bin counts)",
+    "ridge_lag4": "Ridge + 4-bin history",
+    "latency": "Latency-only ridge",
+    "snn": "Reservoir SNN",
+    "trained_snn": "Trained SNN (BPTT)",
+    "snn_shuffle": "Shuffled-order control",
 }
 
 
@@ -241,3 +247,87 @@ def plot_qualitative_trajectories(
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     logger.info("wrote %s (dpi=%d, %d models)", out_path, dpi, n_models)
+
+
+def plot_trajectory_reconstruction(
+    predictions_paths: dict[str, Path],
+    out_path: Path,
+    snapshot_seconds: float = 6.0,
+    snapshot_start_seconds: float = 0.0,
+    event_budget: float | None = None,
+    dpi: int = 300,
+) -> None:
+    """2-D cursor trajectory reconstruction from integrated predicted velocity.
+
+    For each model in `predictions_paths`, integrates `y_pred` (velocity) over
+    time to a position trajectory (starting at the integrated true-velocity
+    start position), and overlays it on the integrated true-velocity ground
+    truth. One subplot per model in a single row.
+
+    Position has an unknown global offset — both paths start at the same
+    integrated origin so the comparison is direction + curvature, not
+    absolute placement.
+    """
+    if not predictions_paths:
+        raise ValueError("predictions_paths is empty")
+
+    models = list(predictions_paths.keys())
+    n = len(models)
+    fig, axes = plt.subplots(1, n, figsize=(4.0 * n + 0.5, 4.0))
+    if n == 1:
+        axes = np.array([axes])
+
+    for i, model in enumerate(models):
+        path = Path(predictions_paths[model])
+        if not path.is_file():
+            logger.warning("predictions file missing for %s: %s", model, path)
+            continue
+        z = np.load(path, allow_pickle=True)
+        y_true = np.asarray(z["y_true"])
+        y_pred = np.asarray(z["y_pred"])
+        bin_size_ms = float(z["bin_size_ms"]) if "bin_size_ms" in z.files else 50.0
+        bin_size_s = bin_size_ms / 1000.0
+        n_bins_total = y_true.shape[0]
+        n_window = max(2, int(round(snapshot_seconds * 1000.0 / bin_size_ms)))
+        start_bin = max(0, min(int(round(snapshot_start_seconds * 1000.0 / bin_size_ms)), n_bins_total - 2))
+        end_bin = min(start_bin + n_window, n_bins_total)
+
+        # Integrate velocity → position, both start at origin.
+        true_pos = np.cumsum(y_true[start_bin:end_bin] * bin_size_s, axis=0)
+        pred_pos = np.cumsum(y_pred[start_bin:end_bin] * bin_size_s, axis=0)
+        true_pos -= true_pos[0]
+        pred_pos -= pred_pos[0]
+
+        style = MODEL_STYLES.get(model, {"color": "tab:blue"})
+        ax = axes[i]
+        ax.plot(true_pos[:, 0], true_pos[:, 1], color="black", linewidth=2.0, label="true")
+        ax.plot(
+            pred_pos[:, 0], pred_pos[:, 1],
+            color=style.get("color", "tab:blue"),
+            linewidth=1.6, alpha=0.85, label="reconstructed",
+        )
+        ax.scatter([0], [0], marker="o", color="black", zorder=3)
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.grid(True, alpha=0.3)
+        ax.set_title(MODEL_DISPLAY_NAMES.get(model, model))
+        ax.set_xlabel("x")
+        if i == 0:
+            ax.set_ylabel("y")
+        if i == n - 1:
+            ax.legend(loc="best", fontsize=9, framealpha=0.9)
+        logger.info(
+            "trajectory panel for %s: bins=[%d, %d), %.2fs window",
+            model, start_bin, end_bin, (end_bin - start_bin) * bin_size_s,
+        )
+
+    budget_str = f"f = {event_budget:.2f}" if event_budget is not None else ""
+    suptitle = "Reconstructed 2D cursor trajectories from integrated predicted velocity"
+    if budget_str:
+        suptitle += f"  ({budget_str})"
+    fig.suptitle(suptitle, y=1.02)
+    fig.tight_layout()
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("wrote %s (dpi=%d, %d models)", out_path, dpi, n)
