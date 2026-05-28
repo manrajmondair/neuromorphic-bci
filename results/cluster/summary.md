@@ -78,6 +78,7 @@ Same 4-shuffle battery as `results/snn/null_battery.json` but with the trained S
 | `order_shuffle` | 0.10 | +0.1071 | +0.1071 | [+0.1071, +0.1071] | 1 | 20 |
 | `phase_random` | 0.10 | +0.1071 | +0.0977 | [+0.0842, +0.1087] | 0.1905 | 20 |
 | `neuron_shuffle` | 0.10 | +0.1071 | +0.1038 | [+0.0993, +0.1097] | 0.1905 | 20 |
+| `circular_shift` | 0.10 | +0.1071 | -0.0007 | [-0.0031, +0.0001] | 0.04762 | 20 |
 
 ## Earliest vs random vs latest event budget
 
