@@ -1,8 +1,8 @@
-# Cluster setup — what you (Manraj) need to do manually
+# Cluster setup — one-time
 
-The Omniva CLI's first-time OAuth requires a browser and a sudo password, neither of which my session can drive. Once these five steps are done, I can take over the rest from `kubectl` here.
+The Omniva CLI's first-time OAuth requires a browser and a sudo password. Once these steps are done, every subsequent cluster operation can be automated through `cluster/cluster_drive.py`.
 
-## Steps for you to run on your laptop
+## Steps
 
 ### 1. Download the `om` binary
 
@@ -14,47 +14,43 @@ macOS blocks direct moves from Downloads to `/usr/local/bin`, so copy through `/
 
 ```bash
 chmod +x ~/Downloads/om
-cp ~/Downloads/om /private/tmp/om
-chmod +x /private/tmp/om
-sudo mv /private/tmp/om /usr/local/bin/om
+sudo install -m 0755 ~/Downloads/om /usr/local/bin/om
 om --version
 ```
 
-### 3. Log in via browser OAuth
+### 3. Log in
+
+Either flow works:
 
 ```bash
-om login
+om login                                 # interactive — opens a browser, signs in as your Stanford account
+# OR
+om login --client-credentials-file creds.json    # M2M flow, headless; creds.json contains client_id + client_secret
 ```
 
-This opens a browser. Sign in with your AMP-invited account; the CLI captures the token automatically.
+Interactive login gives a kubeconfig that can `kubectl exec` into your own login pod directly. The M2M client identity (Customer Admin role) cannot exec into login pods because of the cluster's `ValidatingAdmissionPolicy`, but it has every other right the driver needs: read secrets, port-forward, create pods, read pod logs.
 
-### 4. Generate your kubeconfig
+### 4. Generate the kubeconfig
 
 ```bash
 om create kubeconfig --k8s-cluster amp-internal
-```
-
-### 5. Verify your username
-
-```bash
 kubectl auth whoami
-```
-
-This MUST print a line like `Username: manraj`. If the username is anything other than `manraj`, paste me the output before doing anything else — I'll patch `CLAUDE.md` and every sbatch script with the correct value. Likely names if the convention surprises us: `mmondair`, `msmondair`, `manrajm`, `manraj-mondair`.
-
-### 6. Locate your login pod (sanity check)
-
-```bash
 kubectl get pod -n slurm -l stanford/user=manraj
 ```
 
-Should print one pod whose name starts with `slurm-login-manraj-`. Paste me the pod name once you see it; I'll use it in the cluster-driver scripts.
+`whoami` should print `Username: manraj` (interactive flow) or a `bot-*` identity (M2M flow). Either is fine — the driver auto-detects which path to use.
 
-## When all six are done
+## After setup
 
-Reply to me with:
+Drive everything from this laptop via:
 
-1. The output of `kubectl auth whoami` (one line is enough).
-2. The pod name from step 6.
+```bash
+python cluster/cluster_drive.py bootstrap      # clone + preprocess on the cluster
+python cluster/cluster_drive.py round1         # smoke -> 3 main jobs
+python cluster/cluster_drive.py status <jid>
+python cluster/cluster_drive.py wait <jid>+
+python cluster/cluster_drive.py log <jid>
+python cluster/cluster_drive.py pull           # tar results/cluster -> back to laptop
+```
 
-Then I take over — push the repo + processed data onto the cluster, submit the three sbatch jobs, monitor, pull results, and regenerate figures.
+See `cluster/RUNBOOK.md` for the full playbook from setup to results.

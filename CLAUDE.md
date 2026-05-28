@@ -1,4 +1,4 @@
-Source-of-truth context for any AI coding assistant working in this repo while we use the AMP PBC GPU cluster.
+Cluster-specific notes for anyone (or anything) working in this repo against the AMP PBC GPU cluster. Treat this file as the single source of truth for environment, partitions, image policy, and the safety rules below.
 
 ---
 

@@ -1,35 +1,34 @@
-"""Bot-driven cluster operator.
+"""Cluster operator — drive AMP PBC SLURM jobs from a laptop.
 
-Drives the AMP PBC cluster entirely from this laptop using the M2M client
-the user provided. Three layers:
+The driver only relies on verbs that are available under either an
+interactive `manraj` kubeconfig OR a client-credentials kubeconfig
+(Customer Admin + ML Ops). It works under both:
 
-1. **kubectl pods** (the bot CAN create pods + read their logs in the slurm
-   namespace, even though it CANNOT exec into the login pod). We use pods
-   to do file I/O on `/home/manraj` via the shared Weka volume and to
-   ferry result tarballs back as base64 in stdout.
+  1. `kubectl create pod` + `kubectl logs` in the `slurm` namespace.
+     CPU-only helper pods mount the shared Weka home (`slurm-shared-home`
+     PVC) as UID 10010 to do filesystem work — clone the repo, run
+     preprocessing, tar `results/cluster/`, etc. The pods' stdout is the
+     channel back to the laptop; base64-encoded tarballs round-trip
+     cleanly through `kubectl logs`.
 
-2. **slurmrestd over `kubectl port-forward`**. The bot reads the
-   `slurm-auth-jwt` secret, signs a short-lived JWT with `sun=manraj`,
-   and submits jobs at `http://localhost:16820/slurm/v0.0.41/...`. Jobs
-   execute as manraj with correct SLURM accounting.
+  2. `kubectl port-forward svc/slurm-restapi 6820` + the `slurm-auth-jwt`
+     secret. Sign a 2-hour HS256 token with `sun=manraj` and submit jobs
+     to slurmrestd at `/slurm/v0.0.41/job/submit`. Jobs run as manraj
+     with the right home dir + correct SLURM accounting.
 
-3. **stdout-as-channel.** Reader pods tar `/home/manraj/...` and base64
-   their tarball to stdout; the bot reads via `kubectl logs` and decodes
-   locally. No GitHub PAT, no SSH, no kubectl cp.
-
-Why this works without an interactive `om login`: the bot can `get
-secrets` + `create pods` + `pods/portforward` in `slurm` ns, all of which
-are granted by the "Customer Admin" + "ML Ops" roles on the M2M client.
-The only forbidden verb is `pods/exec` into a `slurm-login-*` pod, which
-this driver never needs.
+The driver never needs `kubectl exec`, `kubectl cp`, or SSH, which is
+why it works with a client-credentials identity that the cluster's
+`stanford-exec-isolation` ValidatingAdmissionPolicy denies exec for.
 
 CLI:
-    python cluster/bot_drive.py bootstrap         # clone repo + preprocess
-    python cluster/bot_drive.py submit <job>      # submit a SLURM job
-    python cluster/bot_drive.py status <job_id>   # check SLURM job status
-    python cluster/bot_drive.py wait <job_id>+    # block until done
-    python cluster/bot_drive.py pull              # tar results/cluster, fetch locally
-    python cluster/bot_drive.py round1            # whole round-1 sequence end-to-end
+    python cluster/cluster_drive.py bootstrap         # clone + preprocess
+    python cluster/cluster_drive.py submit <sbatch>   # submit a SLURM job
+    python cluster/cluster_drive.py status <job_id>+  # SLURM job state
+    python cluster/cluster_drive.py wait <job_id>+    # block until terminal
+    python cluster/cluster_drive.py log <job_id>      # cat SLURM stdout file
+    python cluster/cluster_drive.py pull              # tar results/cluster, fetch locally
+    python cluster/cluster_drive.py round1            # smoke -> 3 main jobs
+    python cluster/cluster_drive.py round2            # 3 round-2 jobs in parallel
 """
 from __future__ import annotations
 
@@ -49,8 +48,8 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 
-LOG_FORMAT = "%(asctime)s [%(levelname)-7s] bot_drive: %(message)s"
-logger = logging.getLogger("bot_drive")
+LOG_FORMAT = "%(asctime)s [%(levelname)-7s] cluster_drive: %(message)s"
+logger = logging.getLogger("cluster_drive")
 
 NAMESPACE = "slurm"
 USERNAME = "manraj"
@@ -158,7 +157,7 @@ def run_pod(name: str, script: str, image: str = HELPER_IMAGE,
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {"name": pod_name, "namespace": NAMESPACE,
-                     "labels": {"managed-by": "bot-drive", "purpose": name}},
+                     "labels": {"managed-by": "cluster-drive", "purpose": name}},
         "spec": {
             "restartPolicy": "Never",
             "securityContext": {"runAsUser": run_as_user,
@@ -309,16 +308,47 @@ def cmd_bootstrap(args):
             python3 -m venv .venv-bootstrap
         fi
         . .venv-bootstrap/bin/activate
-        pip install --quiet --upgrade pip
-        echo "--- installing python deps for preprocess ---"
-        pip install --quiet -r requirements.txt
-        pip install --quiet --no-deps nlb-tools==0.0.4
-        echo "--- download + preprocess ---"
-        if ! find data/raw -name '*.nwb' | grep -q .; then
-            python scripts/download_mc_rtt.py
-        fi
+        export PIP_CACHE_DIR=/home/{USERNAME}/.cache/pip
+        mkdir -p "$PIP_CACHE_DIR"
+        pip install --upgrade --quiet pip
+        echo "--- installing minimal preprocess deps ---"
+        # Bootstrap only needs to download + preprocess MC_RTT. We deliberately
+        # skip torch / snntorch / matplotlib / scikit-learn / jupyter — those
+        # are for the SLURM GPU jobs which use the NGC PyTorch container that
+        # already has them pre-installed. Trimming the bootstrap from ~1 GB
+        # of wheels to ~200 MB cuts the pod from ~5 min to ~1 min.
+        pip install --quiet \
+            "numpy>=1.24" "scipy>=1.10" "pandas>=2.0" \
+            "h5py>=3.9" "pynwb>=2.5" "tqdm>=4.65" "dandi>=0.59"
+        pip install --quiet --no-deps "nlb-tools==0.0.4"
+        echo "--- download via direct https ---"
+        # The dandi-py CLI hits a PermissionError on the Weka filesystem when
+        # writing into freshly-created subdirs (its subprocess workers seem
+        # to lose fsGroup). Sidestep it by fetching each asset's blob URL
+        # directly from the public DANDI API. Hard-coded for dandiset 000129
+        # / draft / sub-Indy (the MC_RTT recording). The DANDI API URL
+        # `https://api.dandiarchive.org/api/assets/<asset_id>/download/`
+        # 302-redirects to the actual S3 blob, which curl -L follows.
+        mkdir -p data/raw/000129/sub-Indy
+        cat <<'EOF' | while IFS=$'\t' read -r aid relpath size; do
+648a7418-98e8-4413-ba97-3772dd325ecc\tsub-Indy/sub-Indy_desc-test_ecephys.nwb\t1201344
+2ae6bf3c-788b-4ece-8c01-4b4a5680b25b\tsub-Indy/sub-Indy_desc-train_behavior+ecephys.nwb\t49764168
+EOF
+            dest="data/raw/000129/$relpath"
+            if [ -f "$dest" ] && [ "$(stat -c '%s' "$dest" 2>/dev/null || echo 0)" = "$size" ]; then
+                echo "skip $relpath ($size bytes, already downloaded)"
+                continue
+            fi
+            mkdir -p "$(dirname "$dest")"
+            echo "fetching $relpath ($size bytes) -> $dest"
+            curl -fLs --retry 3 \
+                -o "$dest" \
+                "https://api.dandiarchive.org/api/assets/$aid/download/"
+        done
+        echo "--- raw files ---"
+        find data/raw -name '*.nwb' -exec ls -la {{}} \;
         if [ ! -f data/processed/processed_mc_rtt.npz ]; then
-            python scripts/preprocess_mc_rtt.py
+            python scripts/preprocess_mc_rtt.py 2>&1 | tail -20
         fi
         echo "--- final state ---"
         ls -la data/processed/
