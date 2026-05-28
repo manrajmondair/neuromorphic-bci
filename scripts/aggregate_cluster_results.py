@@ -301,7 +301,7 @@ def main() -> int:
         by_cfg: dict[tuple[int, int], list[dict]] = {}
         for r in pareto["rows"]:
             by_cfg.setdefault((r["hidden_dim"], r["k_history"]), []).append(r)
-        for (h, k), cells in sorted(by_cfg.keys()):
+        for (h, k) in sorted(by_cfg.keys()):
             cells_list = by_cfg[(h, k)]
             r2s = [c["r2_joint"] for c in cells_list]
             synops = [c["synops_per_prediction_mean"] for c in cells_list]
