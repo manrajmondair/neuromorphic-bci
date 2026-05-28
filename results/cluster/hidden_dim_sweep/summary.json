@@ -1,0 +1,36 @@
+{
+  "rows": [
+    {
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.5481376883310155,
+      "std_r2_joint": 0.007277641054170733,
+      "n_seeds": 3,
+      "hidden_dim": 1024,
+      "k_history": 4
+    },
+    {
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.2437415653668117,
+      "std_r2_joint": 0.002793186466326837,
+      "n_seeds": 3,
+      "hidden_dim": 1024,
+      "k_history": 4
+    },
+    {
+      "event_budget": 1.0,
+      "mean_r2_joint": 0.5468311844340306,
+      "std_r2_joint": 0.0037786944419282795,
+      "n_seeds": 3,
+      "hidden_dim": 2048,
+      "k_history": 4
+    },
+    {
+      "event_budget": 0.25,
+      "mean_r2_joint": 0.23515877444619762,
+      "std_r2_joint": 0.005520391661161827,
+      "n_seeds": 3,
+      "hidden_dim": 2048,
+      "k_history": 4
+    }
+  ]
+}
