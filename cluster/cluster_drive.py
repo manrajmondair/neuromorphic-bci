@@ -640,6 +640,31 @@ def cmd_pull(args):
     logger.info("extracted %d files into %s/results/cluster/", n, out_dir)
 
 
+def cmd_pull_partial(args):
+    """Pull a single in-flight JSON file (e.g. streaming block_cv.json) without
+    waiting for the whole results tree. Useful for peeking at partial progress
+    on a long-running streaming job."""
+    rel = args.path.lstrip("/")
+    if not rel.startswith("results/cluster"):
+        raise ValueError("--path must live under results/cluster/")
+    script = (
+        f"cd {REPO_DIR} && "
+        f"if [ -f {rel} ]; then base64 < {rel}; else echo MISSING; fi"
+    )
+    log = run_pod("pull-partial", script, mount_home=True, timeout_s=120)
+    blob = "".join(log.split())
+    if blob == "MISSING":
+        logger.warning("%s: not yet on the cluster", rel)
+        return
+    if not blob:
+        raise RuntimeError("retrieval pod produced no output")
+    data = base64.b64decode(blob)
+    out_path = Path(args.out_dir or ".") / rel
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(data)
+    logger.info("wrote %s (%d bytes)", out_path, len(data))
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
     ap = argparse.ArgumentParser()
@@ -653,6 +678,11 @@ def main():
     sp = sub.add_parser("wait");   sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_wait)
     sp = sub.add_parser("log");    sp.add_argument("job_id");             sp.set_defaults(fn=cmd_log)
     sp = sub.add_parser("pull");   sp.add_argument("--out-dir", default="."); sp.set_defaults(fn=cmd_pull)
+    sp = sub.add_parser("pull-partial")
+    sp.add_argument("path",
+                    help="repo-relative path under results/cluster/ (e.g. results/cluster/block_cv/block_cv.json)")
+    sp.add_argument("--out-dir", default=".")
+    sp.set_defaults(fn=cmd_pull_partial)
     args = ap.parse_args()
     args.fn(args)
 
