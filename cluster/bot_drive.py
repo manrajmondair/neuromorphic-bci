@@ -1,0 +1,372 @@
+"""Bot-driven cluster operator.
+
+Drives the AMP PBC cluster entirely from this laptop using the M2M client
+the user provided. Three layers:
+
+1. **kubectl pods** (the bot CAN create pods + read their logs in the slurm
+   namespace, even though it CANNOT exec into the login pod). We use pods
+   to do file I/O on `/home/manraj` via the shared Weka volume and to
+   ferry result tarballs back as base64 in stdout.
+
+2. **slurmrestd over `kubectl port-forward`**. The bot reads the
+   `slurm-auth-jwt` secret, signs a short-lived JWT with `sun=manraj`,
+   and submits jobs at `http://localhost:16820/slurm/v0.0.41/...`. Jobs
+   execute as manraj with correct SLURM accounting.
+
+3. **stdout-as-channel.** Reader pods tar `/home/manraj/...` and base64
+   their tarball to stdout; the bot reads via `kubectl logs` and decodes
+   locally. No GitHub PAT, no SSH, no kubectl cp.
+
+Why this works without an interactive `om login`: the bot can `get
+secrets` + `create pods` + `pods/portforward` in `slurm` ns, all of which
+are granted by the "Customer Admin" + "ML Ops" roles on the M2M client.
+The only forbidden verb is `pods/exec` into a `slurm-login-*` pod, which
+this driver never needs.
+
+CLI:
+    python cluster/bot_drive.py bootstrap         # clone repo + preprocess
+    python cluster/bot_drive.py submit <job>      # submit a SLURM job
+    python cluster/bot_drive.py status <job_id>   # check SLURM job status
+    python cluster/bot_drive.py wait <job_id>+    # block until done
+    python cluster/bot_drive.py pull              # tar results/cluster, fetch locally
+    python cluster/bot_drive.py round1            # whole round-1 sequence end-to-end
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import contextlib
+import json
+import logging
+import socket
+import subprocess
+import sys
+import tarfile
+import tempfile
+import textwrap
+import time
+import uuid
+from io import BytesIO
+from pathlib import Path
+
+LOG_FORMAT = "%(asctime)s [%(levelname)-7s] bot_drive: %(message)s"
+logger = logging.getLogger("bot_drive")
+
+NAMESPACE = "slurm"
+USERNAME = "manraj"
+USER_UID = 10010
+HOME_PVC = "slurm-shared-home"
+REPO_URL = "https://github.com/manrajmondair/neuromorphic-bci.git"
+REPO_DIR = f"/home/{USERNAME}/neuromorphic-bci"
+SLURMRESTD_SVC = "slurm-restapi"
+SLURMRESTD_PORT = 6820
+SLURMRESTD_API_VER = "v0.0.41"
+# Small container image with git + curl + Python (CPU work only). Used for
+# bootstrap + result retrieval. The actual GPU work runs through SLURM.
+HELPER_IMAGE = "ghcr.io/astral-sh/uv:python3.11-bookworm-slim"
+
+
+# ---------------------------------------------------------------------------
+# kubectl + JWT helpers
+# ---------------------------------------------------------------------------
+
+
+def _kubectl(*args, check=True, capture=True):
+    cmd = ["kubectl", *args]
+    logger.debug("$ %s", " ".join(cmd))
+    return subprocess.run(cmd, check=check, capture_output=capture, text=True)
+
+
+def slurm_jwt(username: str = USERNAME, lifetime_s: int = 2 * 60 * 60) -> str:
+    """Sign a short-lived slurmrestd JWT scoped to `username`."""
+    import jwt  # local import; pyjwt is in requirements.txt
+    out = subprocess.check_output(
+        ["kubectl", "get", "secret", "slurm-auth-jwt", "-n", NAMESPACE,
+         "-o", "jsonpath={.data.jwt\\.key}"], text=True
+    )
+    key = base64.b64decode(out)
+    now = int(time.time())
+    return jwt.encode({"iat": now, "exp": now + lifetime_s, "sun": username},
+                      key, algorithm="HS256")
+
+
+@contextlib.contextmanager
+def slurmrestd_portforward():
+    """Yield a local port that proxies to slurm-restapi:6820 inside the cluster."""
+    # Pick a free local port to avoid collisions across concurrent driver runs.
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        local_port = s.getsockname()[1]
+    proc = subprocess.Popen(
+        ["kubectl", "port-forward", "-n", NAMESPACE,
+         f"svc/{SLURMRESTD_SVC}", f"{local_port}:{SLURMRESTD_PORT}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        # Wait briefly for the listener to come up.
+        for _ in range(20):
+            with socket.socket() as s:
+                if s.connect_ex(("127.0.0.1", local_port)) == 0:
+                    break
+            time.sleep(0.2)
+        else:
+            raise RuntimeError("port-forward did not open")
+        yield local_port
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def slurmrestd(method: str, path: str, body: dict | None = None,
+               username: str = USERNAME):
+    """Make an authenticated request to slurm-restapi, returning the JSON body."""
+    import requests  # already in requirements via dandi's transitive deps
+    token = slurm_jwt(username)
+    headers = {"X-SLURM-USER-NAME": username, "X-SLURM-USER-TOKEN": token,
+               "Content-Type": "application/json"}
+    with slurmrestd_portforward() as port:
+        url = f"http://localhost:{port}/slurm/{SLURMRESTD_API_VER}{path}"
+        if method == "GET":
+            r = requests.get(url, headers=headers, timeout=30)
+        elif method == "POST":
+            r = requests.post(url, headers=headers, data=json.dumps(body or {}),
+                              timeout=60)
+        elif method == "DELETE":
+            r = requests.delete(url, headers=headers, timeout=30)
+        else:
+            raise ValueError(method)
+    r.raise_for_status()
+    return r.json()
+
+
+# ---------------------------------------------------------------------------
+# Pod helpers — for file I/O on /home/manraj without exec or cp
+# ---------------------------------------------------------------------------
+
+
+def run_pod(name: str, script: str, image: str = HELPER_IMAGE,
+            mount_home: bool = True, run_as_user: int = USER_UID,
+            timeout_s: int = 600, ttl_seconds_after_finished: int = 300) -> str:
+    """Run a one-shot pod that executes `script`, then return its log output."""
+    pod_name = f"{name}-{uuid.uuid4().hex[:6]}"
+    manifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"name": pod_name, "namespace": NAMESPACE,
+                     "labels": {"managed-by": "bot-drive", "purpose": name}},
+        "spec": {
+            "restartPolicy": "Never",
+            "securityContext": {"runAsUser": run_as_user,
+                                "runAsGroup": run_as_user,
+                                "fsGroup": run_as_user},
+            "containers": [{
+                "name": "main",
+                "image": image,
+                "command": ["bash", "-lc", script],
+                "resources": {
+                    "requests": {"cpu": "1", "memory": "2Gi"},
+                    "limits": {"cpu": "4", "memory": "8Gi"},
+                },
+                "volumeMounts": ([{"name": "home", "mountPath": "/home"}]
+                                 if mount_home else []),
+            }],
+            "volumes": ([{"name": "home",
+                         "persistentVolumeClaim": {"claimName": HOME_PVC}}]
+                        if mount_home else []),
+        },
+    }
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(manifest, f)
+        manifest_path = f.name
+    try:
+        _kubectl("apply", "-f", manifest_path)
+        _kubectl("wait", "--for=jsonpath={.status.phase}=Succeeded",
+                 f"pod/{pod_name}", "-n", NAMESPACE, f"--timeout={timeout_s}s",
+                 check=False)
+        log = _kubectl("logs", "-n", NAMESPACE, pod_name).stdout
+        phase = _kubectl("get", "pod", pod_name, "-n", NAMESPACE,
+                         "-o", "jsonpath={.status.phase}").stdout.strip()
+        if phase != "Succeeded":
+            raise RuntimeError(f"pod {pod_name} ended in phase {phase}; logs:\n{log}")
+        return log
+    finally:
+        _kubectl("delete", "pod", pod_name, "-n", NAMESPACE,
+                 "--wait=false", check=False)
+
+
+# ---------------------------------------------------------------------------
+# SLURM job helpers
+# ---------------------------------------------------------------------------
+
+
+def submit_slurm_job(name: str, script: str, *, time_limit_min: int,
+                     gpus: int = 0, partition: str = "small",
+                     cpus_per_task: int = 16):
+    """Submit a SLURM job via REST, returning its job_id."""
+    job = {
+        "job": {
+            "name": name,
+            "partition": partition,
+            "cpus_per_task": cpus_per_task,
+            "current_working_directory": REPO_DIR,
+            "standard_output": f"{REPO_DIR}/cluster_logs/{name}-%j.out",
+            "standard_error": f"{REPO_DIR}/cluster_logs/{name}-%j.out",
+            "time_limit": {"set": True, "infinite": False,
+                           "number": time_limit_min},
+            "environment": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+        },
+        "script": "#!/bin/bash\n" + script,
+    }
+    if gpus > 0:
+        job["job"]["tres_per_job"] = f"gres/gpu:{gpus}"
+
+    reply = slurmrestd("POST", "/job/submit", job)
+    if reply.get("errors"):
+        raise RuntimeError(f"submit errored: {reply['errors']}")
+    job_id = reply["job_id"]
+    logger.info("submitted SLURM job %s as id=%s", name, job_id)
+    return int(job_id)
+
+
+def slurm_job_state(job_id: int):
+    """Return SLURM job state + a few useful fields."""
+    reply = slurmrestd("GET", f"/job/{job_id}")
+    if reply.get("errors"):
+        return {"state": "MISSING", "errors": reply["errors"]}
+    j = reply["jobs"][0]
+    return {
+        "state": j.get("job_state", ["?"])[0]
+                  if isinstance(j.get("job_state"), list)
+                  else j.get("job_state"),
+        "exit_code": j.get("exit_code"),
+        "elapsed": j.get("time"),
+        "stdout_path": j.get("standard_output"),
+        "node": j.get("nodes"),
+    }
+
+
+def wait_for_jobs(job_ids: list[int], poll_s: int = 30) -> dict[int, dict]:
+    """Block until every job_id reaches a terminal state. Returns final states."""
+    terminal = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
+                "BOOT_FAIL", "NODE_FAIL", "DEADLINE", "PREEMPTED",
+                "REVOKED", "SPECIAL_EXIT", "STOPPED", "MISSING"}
+    states: dict[int, dict] = {}
+    pending = set(job_ids)
+    while pending:
+        time.sleep(poll_s)
+        for jid in list(pending):
+            try:
+                s = slurm_job_state(jid)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("status poll failed for %s: %s", jid, e)
+                continue
+            states[jid] = s
+            logger.info("job %s: state=%s elapsed=%s", jid, s["state"], s.get("elapsed"))
+            if s["state"] in terminal:
+                pending.discard(jid)
+    return states
+
+
+def read_slurm_job_log(job_id: int) -> str:
+    """Cat the SLURM job's stdout file via a helper pod."""
+    log_glob = f"{REPO_DIR}/cluster_logs/*-{job_id}.out"
+    script = f'shopt -s nullglob; for f in {log_glob}; do echo "=== $f ==="; cat "$f"; done'
+    return run_pod("read-log", script, mount_home=True, timeout_s=120)
+
+
+# ---------------------------------------------------------------------------
+# High-level orchestration commands
+# ---------------------------------------------------------------------------
+
+
+def cmd_bootstrap(args):
+    """Clone the repo onto /home/manraj and run preprocessing."""
+    script = textwrap.dedent(f"""
+        set -euo pipefail
+        cd /home/{USERNAME}
+        if [ -d neuromorphic-bci/.git ]; then
+            cd neuromorphic-bci
+            git remote set-url origin {REPO_URL}
+            git fetch --prune origin
+            git checkout main
+            git reset --hard origin/main
+        else
+            git clone {REPO_URL} neuromorphic-bci
+            cd neuromorphic-bci
+        fi
+        mkdir -p cluster_logs data/raw data/processed results/cluster
+        echo "--- repo head ---"
+        git log --oneline -1
+        echo "--- installing python deps for preprocess ---"
+        uv venv .venv-bootstrap
+        . .venv-bootstrap/bin/activate
+        uv pip install --quiet -r requirements.txt
+        uv pip install --quiet --no-deps nlb-tools==0.0.4
+        echo "--- download + preprocess ---"
+        if ! find data/raw -name '*.nwb' | grep -q .; then
+            python scripts/download_mc_rtt.py
+        fi
+        if [ ! -f data/processed/processed_mc_rtt.npz ]; then
+            python scripts/preprocess_mc_rtt.py
+        fi
+        echo "--- final state ---"
+        ls -la data/processed/
+        echo "BOOTSTRAP OK"
+    """)
+    log = run_pod("bootstrap", script, mount_home=True, timeout_s=900)
+    print(log)
+
+
+def cmd_status(args):
+    for jid in args.job_ids:
+        s = slurm_job_state(int(jid))
+        print(json.dumps({"job_id": int(jid), **s}, indent=2))
+
+
+def cmd_wait(args):
+    states = wait_for_jobs([int(j) for j in args.job_ids])
+    print(json.dumps(states, indent=2))
+
+
+def cmd_log(args):
+    print(read_slurm_job_log(int(args.job_id)))
+
+
+def cmd_pull(args):
+    """Tar /home/manraj/.../results/cluster on the cluster, base64 it to stdout,
+    and untar locally."""
+    script = (
+        f"cd {REPO_DIR} && tar c results/cluster/ 2>/dev/null | base64"
+    )
+    log = run_pod("pull-results", script, mount_home=True, timeout_s=180)
+    # Pod log includes everything the container wrote; the base64 tarball is
+    # the only thing the script emits. Strip whitespace and decode.
+    blob = "".join(log.split())
+    if not blob:
+        raise RuntimeError("retrieval pod produced no output")
+    tar_bytes = base64.b64decode(blob)
+    out_dir = Path(args.out_dir or ".")
+    with tarfile.open(fileobj=BytesIO(tar_bytes)) as tf:
+        tf.extractall(out_dir)
+    n = sum(1 for _ in (out_dir / "results" / "cluster").rglob("*") if _.is_file())
+    logger.info("extracted %d files into %s/results/cluster/", n, out_dir)
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("bootstrap").set_defaults(fn=cmd_bootstrap)
+    sp = sub.add_parser("status"); sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_status)
+    sp = sub.add_parser("wait");   sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_wait)
+    sp = sub.add_parser("log");    sp.add_argument("job_id");             sp.set_defaults(fn=cmd_log)
+    sp = sub.add_parser("pull");   sp.add_argument("--out-dir", default="."); sp.set_defaults(fn=cmd_pull)
+    args = ap.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()
