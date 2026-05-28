@@ -64,14 +64,14 @@ After all three jobs finish (`sacct -u $USER -S today` shows `COMPLETED`):
 ./cluster/local_drive.sh pull
 ```
 
-This `kubectl cp`s the entire `results/cluster/` tree back onto the laptop, where we then merge it into the local working tree and regenerate the final figures.
+This `kubectl cp`s the entire `results/cluster/` tree back onto the laptop, where it is merged into the local working tree before the final figures are regenerated.
 
 ## Things that will bite you
 
 - **Don't pass `--cpus-per-task` lower than 16 on container jobs.** First-time enroot squashfs build is single-threaded; with 2 CPUs it takes ~30 min, with 16 it takes ~3 min.
 - **Don't use `docker.io#library/...` image refs.** Bare names (`alpine:latest`) or NGC URIs (`nvcr.io#...`) only. We use the NGC PyTorch image.
 - **Don't run anything compute-heavy in the login pod.** It has no GPU and very small CPU limits. Always sbatch.
-- **Don't kill `slurm-*` infrastructure pods.** Read CLAUDE.md at the repo root for the full safety list.
+- **Don't kill `slurm-*` infrastructure pods.** See `cluster/CLUSTER.md` for the full safety list.
 
 ## Budget hygiene
 
