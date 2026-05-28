@@ -236,6 +236,26 @@ def main() -> int:
                 md_parts.append(f"- {knob} = {v}: R² = {mn:+.4f} ± {sd:.4f} (n={len(vs)})")
             md_parts.append("")
 
+    trained_null = _read_json(args.results_dir / "snn_trained" / "null_battery.json")
+    if trained_null and trained_null.get("rows"):
+        md_parts.append("## Trained-SNN multi-shuffle null battery\n")
+        md_parts.append(
+            "Same 4-shuffle battery as `results/snn/null_battery.json` but with "
+            "the trained SNN (BPTT) substituted for the reservoir SNN. Each row "
+            "compares the real-order test R² to the null distribution for one "
+            "shuffle type at one event budget.\n"
+        )
+        md_parts.append("| Shuffle | f | real | null mean | null 95% CI | p (1-sided) | n |")
+        md_parts.append("|---|---:|---:|---:|---:|---:|---:|")
+        for row in trained_null["rows"]:
+            md_parts.append(
+                f"| `{row['shuffle']}` | {row['event_budget']:.2f} | "
+                f"{row['real_r2_joint']:+.4f} | {row['null_mean']:+.4f} | "
+                f"[{row['null_lo_ci']:+.4f}, {row['null_hi_ci']:+.4f}] | "
+                f"{row['p_value_one_sided']:.4g} | {row['n_perm']} |"
+            )
+        md_parts.append("")
+
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text("\n".join(md_parts) + "\n")
     logger.info("wrote %s", args.summary_path)
