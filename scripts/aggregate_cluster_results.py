@@ -256,6 +256,88 @@ def main() -> int:
             )
         md_parts.append("")
 
+    bfk = _read_json(args.results_dir / "budget_filter_kind" / "results.json")
+    if bfk and bfk.get("rows"):
+        md_parts.append("## Earliest vs random vs latest event budget\n")
+        md_parts.append(
+            "Compares the standard 'earliest k events' filter against 'random k' "
+            "and 'latest k' across the same event budget grid. If random ties "
+            "earliest, the signal is in within-bin order alone; if earliest "
+            "beats random, movement-onset timing also matters.\n"
+        )
+        md_parts.append("| Model | f | earliest | random | latest |")
+        md_parts.append("|---|---:|---:|---:|---:|")
+        by_cell: dict[tuple[str, float], dict[str, list[float]]] = {}
+        for r in bfk["rows"]:
+            key = (r["model"], float(r["event_budget"]))
+            by_cell.setdefault(key, {}).setdefault(r["kind"], []).append(r["r2_joint"])
+        for (model, f) in sorted(by_cell.keys()):
+            cells = by_cell[(model, f)]
+            row_cells = []
+            for kind in ("earliest", "random", "latest"):
+                vs = cells.get(kind, [])
+                if not vs:
+                    row_cells.append("—")
+                else:
+                    mn = statistics.mean(vs)
+                    sd = statistics.stdev(vs) if len(vs) > 1 else 0.0
+                    row_cells.append(f"{mn:+.4f} ± {sd:.4f}")
+            md_parts.append(f"| `{model}` | {f:.2f} | " + " | ".join(row_cells) + " |")
+        md_parts.append("")
+
+    pareto = _read_json(args.results_dir / "pareto" / "pareto_energy_accuracy.json")
+    if pareto and pareto.get("rows"):
+        md_parts.append("## Energy-accuracy Pareto (trained SNN, f=1.0)\n")
+        md_parts.append(
+            "Sweep over `(hidden_dim, k_history)` recording test R² *and* the "
+            "actual synaptic-operation count per prediction. Loihi 2 energy "
+            "= synops_per_prediction × 23 pJ.\n"
+        )
+        md_parts.append(
+            "| hidden | k_hist | R² (mean ± std) | synops/pred | "
+            "Loihi 2 (pJ/pred) | A100 (pJ/pred) |"
+        )
+        md_parts.append("|---:|---:|---:|---:|---:|---:|")
+        by_cfg: dict[tuple[int, int], list[dict]] = {}
+        for r in pareto["rows"]:
+            by_cfg.setdefault((r["hidden_dim"], r["k_history"]), []).append(r)
+        for (h, k), cells in sorted(by_cfg.keys()):
+            cells_list = by_cfg[(h, k)]
+            r2s = [c["r2_joint"] for c in cells_list]
+            synops = [c["synops_per_prediction_mean"] for c in cells_list]
+            loihi = [c["energy_pj_per_prediction"]["loihi2"] for c in cells_list]
+            a100 = [c["energy_pj_per_prediction"]["gpu_a100"] for c in cells_list]
+            md_parts.append(
+                f"| {h} | {k} | {statistics.mean(r2s):+.4f} ± "
+                f"{statistics.stdev(r2s) if len(r2s)>1 else 0:.4f} | "
+                f"{statistics.mean(synops):,.0f} | "
+                f"{statistics.mean(loihi):,.0f} | "
+                f"{statistics.mean(a100):,.0f} |"
+            )
+        md_parts.append("")
+
+    chdrop = _read_json(args.results_dir / "channel_dropout" / "results.json")
+    if chdrop and chdrop.get("rows"):
+        md_parts.append("## Test-time channel dropout\n")
+        md_parts.append(
+            "Models trained once on clean data; evaluated under random "
+            "channel-mask test perturbations across multiple masks per "
+            "dropout fraction. The implantable-BCI relevance check.\n"
+        )
+        md_parts.append("| Model | p | R² (mean ± std across masks) |")
+        md_parts.append("|---|---:|---:|")
+        by_pair: dict[tuple[str, float], list[float]] = {}
+        for r in chdrop["rows"]:
+            by_pair.setdefault((r["model"], float(r["dropout_fraction"])), []).append(
+                float(r["r2_joint"])
+            )
+        for (model, p) in sorted(by_pair.keys(), key=lambda x: (x[0], x[1])):
+            vs = by_pair[(model, p)]
+            mn = statistics.mean(vs)
+            sd = statistics.stdev(vs) if len(vs) > 1 else 0.0
+            md_parts.append(f"| `{model}` | {p:.2f} | {mn:+.4f} ± {sd:.4f} |")
+        md_parts.append("")
+
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text("\n".join(md_parts) + "\n")
     logger.info("wrote %s", args.summary_path)
