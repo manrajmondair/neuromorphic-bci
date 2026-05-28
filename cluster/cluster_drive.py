@@ -571,6 +571,46 @@ def cmd_status(args):
         print(json.dumps({"job_id": int(jid), **s}, indent=2))
 
 
+def cmd_progress(args):
+    """One-line-per-job summary of every SLURM job (mine, or by id list).
+
+    With no ids, queries the SLURM queue + sacct for everything tied to
+    `sun=manraj`. With ids, just dumps those.
+    """
+    if args.job_ids:
+        ids = [int(j) for j in args.job_ids]
+    else:
+        # Use slurmrestd to list all of manraj's jobs (RUNNING + PENDING).
+        reply = slurmrestd("GET", "/jobs")
+        ids = [int(j["job_id"]) for j in reply.get("jobs", [])
+               if j.get("user_name") == USERNAME]
+        ids = sorted(set(ids))
+    if not ids:
+        print("no SLURM jobs found")
+        return
+    rows = []
+    for jid in ids:
+        try:
+            s = slurm_job_state(jid)
+        except Exception as e:  # noqa: BLE001
+            s = {"state": f"ERR({e})"}
+        elapsed = s.get("elapsed")
+        if isinstance(elapsed, dict):
+            elapsed = elapsed.get("number", 0)
+        else:
+            elapsed = 0
+        rows.append({
+            "job_id": jid,
+            "state": s.get("state"),
+            "elapsed_s": int(elapsed),
+            "node": s.get("node") or "-",
+        })
+    width = max(len(str(r["state"])) for r in rows)
+    print(f"{'job_id':>8} {'state':<{width}}  {'elapsed':>10}  node")
+    for r in rows:
+        print(f"{r['job_id']:>8} {r['state']:<{width}}  {r['elapsed_s']:>8}s   {r['node']}")
+
+
 def cmd_wait(args):
     states = wait_for_jobs([int(j) for j in args.job_ids])
     print(json.dumps(states, indent=2))
@@ -609,6 +649,7 @@ def main():
     sub.add_parser("round1").set_defaults(fn=cmd_round1)
     sub.add_parser("round2").set_defaults(fn=cmd_round2)
     sp = sub.add_parser("status"); sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_status)
+    sp = sub.add_parser("progress"); sp.add_argument("job_ids", nargs="*"); sp.set_defaults(fn=cmd_progress)
     sp = sub.add_parser("wait");   sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_wait)
     sp = sub.add_parser("log");    sp.add_argument("job_id");             sp.set_defaults(fn=cmd_log)
     sp = sub.add_parser("pull");   sp.add_argument("--out-dir", default="."); sp.set_defaults(fn=cmd_pull)
