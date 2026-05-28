@@ -1,4 +1,4 @@
-# Sparse Event-Based Decoding for Implantable Brain–Computer Interfaces
+# Sparse Event-Based Neuromorphic Decoding for Implantable Brain–Computer Interfaces
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
