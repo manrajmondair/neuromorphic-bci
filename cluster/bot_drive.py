@@ -61,9 +61,11 @@ REPO_DIR = f"/home/{USERNAME}/neuromorphic-bci"
 SLURMRESTD_SVC = "slurm-restapi"
 SLURMRESTD_PORT = 6820
 SLURMRESTD_API_VER = "v0.0.41"
-# Small container image with git + curl + Python (CPU work only). Used for
-# bootstrap + result retrieval. The actual GPU work runs through SLURM.
-HELPER_IMAGE = "ghcr.io/astral-sh/uv:python3.11-bookworm-slim"
+# Container image used for CPU-side helper work (clone, preprocess, tar
+# results). Full `python:3.11` ships git + python + pip pre-installed so
+# the helper scripts don't have to apt-get anything. Bookworm-slim drops
+# git so we deliberately use the non-slim image.
+HELPER_IMAGE = "python:3.11"
 
 
 # ---------------------------------------------------------------------------
@@ -300,11 +302,17 @@ def cmd_bootstrap(args):
         mkdir -p cluster_logs data/raw data/processed results/cluster
         echo "--- repo head ---"
         git log --oneline -1
-        echo "--- installing python deps for preprocess ---"
-        uv venv .venv-bootstrap
+        echo "--- python + pip ---"
+        python3 -V
+        python3 -m pip --version
+        if [ ! -d .venv-bootstrap ]; then
+            python3 -m venv .venv-bootstrap
+        fi
         . .venv-bootstrap/bin/activate
-        uv pip install --quiet -r requirements.txt
-        uv pip install --quiet --no-deps nlb-tools==0.0.4
+        pip install --quiet --upgrade pip
+        echo "--- installing python deps for preprocess ---"
+        pip install --quiet -r requirements.txt
+        pip install --quiet --no-deps nlb-tools==0.0.4
         echo "--- download + preprocess ---"
         if ! find data/raw -name '*.nwb' | grep -q .; then
             python scripts/download_mc_rtt.py
@@ -318,6 +326,93 @@ def cmd_bootstrap(args):
     """)
     log = run_pod("bootstrap", script, mount_home=True, timeout_s=900)
     print(log)
+
+
+def parse_sbatch(path: Path) -> tuple[dict, str]:
+    """Parse an sbatch file into (metadata, body).
+
+    Metadata pulled from #SBATCH lines: job_name, partition, gpus,
+    cpus_per_task, time_min. The body is every non-#SBATCH non-comment line
+    after the shebang.
+    """
+    lines = Path(path).read_text().splitlines()
+    meta = {"job_name": "ncbi-job", "partition": "small", "gpus": 0,
+            "cpus_per_task": 16, "time_min": 60}
+    body_lines: list[str] = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("#!"):
+            continue
+        if s.startswith("#SBATCH"):
+            kv = s.removeprefix("#SBATCH").strip()
+            if kv.startswith("--job-name="):
+                meta["job_name"] = kv.split("=", 1)[1]
+            elif kv.startswith("--partition="):
+                meta["partition"] = kv.split("=", 1)[1]
+            elif kv.startswith("--gres=gpu:"):
+                meta["gpus"] = int(kv.split(":")[-1])
+            elif kv.startswith("--cpus-per-task="):
+                meta["cpus_per_task"] = int(kv.split("=", 1)[1])
+            elif kv.startswith("--time="):
+                # HH:MM:SS -> minutes
+                t = kv.split("=", 1)[1]
+                parts = [int(x) for x in t.split(":")]
+                if len(parts) == 3:
+                    h, m, s_ = parts
+                    meta["time_min"] = h * 60 + m + (1 if s_ else 0)
+                elif len(parts) == 2:
+                    meta["time_min"] = parts[0] * 60 + parts[1]
+                else:
+                    meta["time_min"] = parts[0]
+            continue
+        body_lines.append(line)
+    body = "\n".join(body_lines).strip() + "\n"
+    return meta, body
+
+
+def cmd_submit(args):
+    meta, body = parse_sbatch(Path(args.sbatch))
+    logger.info("submitting %s (gpus=%d time=%d min)",
+                meta["job_name"], meta["gpus"], meta["time_min"])
+    job_id = submit_slurm_job(
+        name=meta["job_name"],
+        script=body,
+        time_limit_min=meta["time_min"],
+        gpus=meta["gpus"],
+        partition=meta["partition"],
+        cpus_per_task=meta["cpus_per_task"],
+    )
+    print(json.dumps({"job_id": job_id, **meta}))
+
+
+def _submit_sbatch(name: str) -> int:
+    meta, body = parse_sbatch(Path(f"cluster/sbatch/{name}.sbatch"))
+    return submit_slurm_job(
+        name=meta["job_name"], script=body,
+        time_limit_min=meta["time_min"], gpus=meta["gpus"],
+        partition=meta["partition"], cpus_per_task=meta["cpus_per_task"],
+    )
+
+
+def cmd_round1(args):
+    """Submit smoke first, gate on its success, then fan out the 3 round-1 jobs."""
+    smoke_id = _submit_sbatch("smoke")
+    logger.info("smoke job submitted: id=%s; waiting for COMPLETED ...", smoke_id)
+    states = wait_for_jobs([smoke_id])
+    if states[smoke_id]["state"] != "COMPLETED":
+        raise RuntimeError(f"smoke job did not COMPLETE: {states}")
+    logger.info("smoke OK; submitting 3 round-1 jobs in parallel ...")
+    ids = [_submit_sbatch(n) for n in ("block_cv_grid", "perm_1000", "hidden_dim_big")]
+    logger.info("submitted ids: %s", ids)
+    print(json.dumps({"smoke_job_id": smoke_id, "round1_job_ids": ids}, indent=2))
+
+
+def cmd_round2(args):
+    """Submit the three round-2 jobs in parallel (no smoke required)."""
+    ids = [_submit_sbatch(n) for n in
+           ("trained_snn_ensemble", "ridge_lag_sweep", "snn_sensitivity")]
+    logger.info("round-2 ids: %s", ids)
+    print(json.dumps({"round2_job_ids": ids}, indent=2))
 
 
 def cmd_status(args):
@@ -360,6 +455,9 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("bootstrap").set_defaults(fn=cmd_bootstrap)
+    sp = sub.add_parser("submit"); sp.add_argument("sbatch"); sp.set_defaults(fn=cmd_submit)
+    sub.add_parser("round1").set_defaults(fn=cmd_round1)
+    sub.add_parser("round2").set_defaults(fn=cmd_round2)
     sp = sub.add_parser("status"); sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_status)
     sp = sub.add_parser("wait");   sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_wait)
     sp = sub.add_parser("log");    sp.add_argument("job_id");             sp.set_defaults(fn=cmd_log)
