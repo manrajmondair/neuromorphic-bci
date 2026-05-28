@@ -56,3 +56,6 @@ report/*.fls
 # Local env
 .env
 .env.local
+
+# Cluster operator runtime artifacts (job-id sentinel etc.)
+cluster/.in_flight_jobs
