@@ -65,13 +65,28 @@ def main() -> int:
     args.out_root.mkdir(parents=True, exist_ok=True)
     args.processed_root.mkdir(parents=True, exist_ok=True)
 
+    # Staleness check: cached per-bin npz is reused only if it's newer than
+    # both the preprocess module and the raw data. Re-preprocesses on any
+    # drift to avoid silently feeding pre-fix splits into a post-fix sweep.
+    preprocess_module = Path(__file__).resolve().parents[1] / "src" / "data" / "preprocess.py"
+    preprocess_mtime = preprocess_module.stat().st_mtime if preprocess_module.is_file() else 0.0
+
     summary_rows: list[dict] = []
     for bin_ms in args.bin_sizes_ms:
         logger.info("=" * 72)
         logger.info("bin_size_ms=%d", bin_ms)
         logger.info("=" * 72)
         processed_path = args.processed_root / f"processed_mc_rtt_b{bin_ms}.npz"
-        if not processed_path.is_file():
+        stale = False
+        if processed_path.is_file():
+            cache_mtime = processed_path.stat().st_mtime
+            if preprocess_mtime > cache_mtime:
+                logger.info(
+                    "cache %s is older than src/data/preprocess.py — re-preprocessing",
+                    processed_path,
+                )
+                stale = True
+        if not processed_path.is_file() or stale:
             logger.info("preprocessing into %s ...", processed_path)
             data = preprocess_mc_rtt(raw_dir=args.raw_dir, bin_size_ms=bin_ms)
             save_processed(data, processed_path)

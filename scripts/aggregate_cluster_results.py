@@ -34,10 +34,23 @@ logger = logging.getLogger("aggregate_cluster_results")
 
 
 def _read_json(path: Path):
+    """Read a results JSON, tolerating partial-write truncation.
+
+    Streaming cluster scripts rewrite their JSON after every cell, so a
+    pull that races a write can land a truncated file locally. Returning
+    None on JSONDecodeError lets the rest of summary.md still render.
+    """
     if not path.is_file():
         logger.warning("missing: %s", path)
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "skipping malformed %s (likely a partial-write from a streaming job): %s",
+            path, e,
+        )
+        return None
 
 
 def _aggregate_block_cv(rows: list[dict]) -> dict:
@@ -314,6 +327,33 @@ def main() -> int:
                 f"{statistics.mean(loihi):,.0f} | "
                 f"{statistics.mean(a100):,.0f} |"
             )
+        md_parts.append("")
+
+    bin_trained = _read_json(args.results_dir / "bin_sweep_trained" / "summary.json")
+    if bin_trained and bin_trained.get("rows"):
+        md_parts.append("## Bin-size sweep × trained SNN\n")
+        md_parts.append(
+            "Extends results/bin_sweep/* (ridge + reservoir SNN) to the trained "
+            "SNN. Confirms the bin-width choice for the headline decoder.\n"
+        )
+        md_parts.append("| bin_ms | f=1.00 | f=0.50 | f=0.25 | f=0.10 |")
+        md_parts.append("|---:|---:|---:|---:|---:|")
+        by_bin: dict[int, dict[float, list[float]]] = {}
+        for r in bin_trained["rows"]:
+            by_bin.setdefault(int(r["bin_size_ms"]), {}).setdefault(
+                float(r["event_budget"]), []
+            ).append(float(r["r2_joint"]))
+        for b in sorted(by_bin.keys()):
+            cells = []
+            for f in (1.0, 0.5, 0.25, 0.1):
+                vs = by_bin[b].get(f, [])
+                if not vs:
+                    cells.append(" — ")
+                    continue
+                mn = statistics.mean(vs)
+                sd = statistics.stdev(vs) if len(vs) > 1 else 0.0
+                cells.append(f"{mn:+.4f} ± {sd:.4f}")
+            md_parts.append(f"| {b} | " + " | ".join(cells) + " |")
         md_parts.append("")
 
     chdrop = _read_json(args.results_dir / "channel_dropout" / "results.json")

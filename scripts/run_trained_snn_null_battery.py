@@ -109,7 +109,32 @@ def main() -> int:
     )
     p.add_argument("--hidden-dim", type=int, default=256)
     p.add_argument("--tau-ms", type=float, default=10.0)
-    p.add_argument("--threshold", type=float, default=0.30)
+    p.add_argument("--threshold", type=float, default=0.30,
+                   help="used when --tune-threshold is OFF; otherwise a starting point only")
+    p.add_argument(
+        "--tune-threshold",
+        action="store_true",
+        help="tune the trained-SNN threshold on the val split per event budget "
+             "before running the null loop. Mirrors run_null_battery.py's per-cell "
+             "tune_threshold_on_val for the reservoir SNN — costs a small handful "
+             "of extra fits per budget but makes the trained- and reservoir-null "
+             "batteries methodologically comparable.",
+    )
+    p.add_argument(
+        "--tune-threshold-grid",
+        type=float,
+        nargs="+",
+        default=[0.15, 0.30, 0.50, 0.80],
+        help="threshold values searched when --tune-threshold is set",
+    )
+    p.add_argument(
+        "--vary-fit-seed",
+        action="store_true",
+        help="use a different model-init seed for every null permutation. "
+             "Default (off) preserves model init across perms so the null "
+             "isolates data-shuffle variance; --vary-fit-seed widens the null "
+             "to also sample fitting variance (more conservative p-values).",
+    )
     p.add_argument("--k-history", type=int, default=4)
     p.add_argument("--epochs", type=int, default=80)
     p.add_argument("--patience", type=int, default=15)
@@ -134,6 +159,33 @@ def main() -> int:
         logger.info("#" * 72)
         et, en = apply_event_budget(data["event_times"], data["event_neurons"], f)
 
+        # Per-budget threshold tuning. Mirrors run_null_battery.py's
+        # tune_threshold_on_val pattern for the reservoir SNN so the two
+        # null batteries are methodologically comparable.
+        if args.tune_threshold:
+            best_thr = float(args.threshold)
+            best_val = float("-inf")
+            for thr in args.tune_threshold_grid:
+                snn_tune = TrainedLatencySNN(
+                    num_neurons=num_neurons,
+                    hidden_dim=args.hidden_dim,
+                    tau_ms=args.tau_ms,
+                    threshold=float(thr),
+                    bin_size_ms=bin_size_ms,
+                    k_history=args.k_history,
+                    epochs=args.epochs,
+                    patience=args.patience,
+                    seed=args.seed,
+                ).fit(et, en, y, train_idx, val_idx)
+                if snn_tune.best_val_r2 > best_val:
+                    best_val = float(snn_tune.best_val_r2)
+                    best_thr = float(thr)
+                logger.info("tune f=%.2f thr=%g  val_r2=%+.4f", f, thr, snn_tune.best_val_r2)
+            cell_threshold = best_thr
+            logger.info("tuned threshold for f=%.2f: %g (val_r2=%+.4f)", f, cell_threshold, best_val)
+        else:
+            cell_threshold = float(args.threshold)
+
         logger.info("fitting real-order trained_snn ...")
         real_r2 = _fit_predict(
             et,
@@ -142,7 +194,7 @@ def main() -> int:
             bin_size_ms=bin_size_ms,
             hidden_dim=args.hidden_dim,
             tau_ms=args.tau_ms,
-            threshold=args.threshold,
+            threshold=cell_threshold,
             k_history=args.k_history,
             epochs=args.epochs,
             patience=args.patience,
@@ -175,6 +227,11 @@ def main() -> int:
             null_r2s: list[float] = []
             for i, sd in enumerate(seeds):
                 et_n, en_n = transform(sd)
+                # --vary-fit-seed widens the null by varying model init per
+                # perm (samples both data-shuffle AND fit variance, more
+                # conservative); default keeps fit_seed=args.seed to isolate
+                # data-shuffle variance only.
+                fit_seed_this = int(sd) if args.vary_fit_seed else args.seed
                 r2 = _fit_predict(
                     et_n,
                     en_n,
@@ -182,7 +239,7 @@ def main() -> int:
                     bin_size_ms=bin_size_ms,
                     hidden_dim=args.hidden_dim,
                     tau_ms=args.tau_ms,
-                    threshold=args.threshold,
+                    threshold=cell_threshold,
                     k_history=args.k_history,
                     epochs=args.epochs,
                     patience=args.patience,
@@ -190,7 +247,7 @@ def main() -> int:
                     train_idx=train_idx,
                     val_idx=val_idx,
                     test_idx=test_idx,
-                    fit_seed=args.seed,
+                    fit_seed=fit_seed_this,
                 )
                 null_r2s.append(r2)
                 if (i + 1) % 5 == 0:
@@ -208,7 +265,9 @@ def main() -> int:
                 "shuffle": name,
                 "event_budget": float(f),
                 "real_r2_joint": float(real_r2),
-                "tuned_threshold": float(args.threshold),
+                "tuned_threshold": float(cell_threshold),
+                "threshold_tuned_per_budget": bool(args.tune_threshold),
+                "vary_fit_seed": bool(args.vary_fit_seed),
                 "null_r2_joints": null_r2s,
                 "null_mean": float(nr.mean()),
                 "null_std": float(nr.std(ddof=1)) if args.n_perm > 1 else 0.0,

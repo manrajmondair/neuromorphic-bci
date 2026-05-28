@@ -105,8 +105,10 @@ def main() -> int:
         # Run encoder once to count emitted spikes (this is z without grad).
         import torch
         with torch.no_grad():
-            xt = torch.from_numpy(x_test)
-            z = snn._encode(xt, snn._W).numpy()
+            # snn._W is on whatever device fit() left it on — keep xt aligned.
+            device = snn._W.device
+            xt = torch.from_numpy(x_test).to(device)
+            z = snn._encode(xt, snn._W).cpu().numpy()
         hidden_spikes_per_bin = z.sum(axis=1).astype(np.float64)
         # Readout MACs = 2 * hidden_dim per bin (constant).
         readout_macs_per_bin = 2 * args.hidden_dim

@@ -86,9 +86,9 @@ class DeeperTrainedSNN:
         decay = float(np.exp(-(self.bin_size_ms / self.num_sub_bins) / self.tau_ms))
         # Layer 0 input: project sub-bin counts.
         injections = torch.einsum("bsn,hn->bsh", x, W_list[0])  # [B, S, H0]
-        u = torch.zeros(B, W_list[0].shape[0], dtype=x.dtype)
-        s_prev = torch.zeros(B, W_list[0].shape[0], dtype=x.dtype)
-        z_last = torch.zeros(B, self.hidden_dims[-1], dtype=x.dtype)
+        u = torch.zeros(B, W_list[0].shape[0], dtype=x.dtype, device=x.device)
+        s_prev = torch.zeros(B, W_list[0].shape[0], dtype=x.dtype, device=x.device)
+        z_last = torch.zeros(B, self.hidden_dims[-1], dtype=x.dtype, device=x.device)
         # We process layer 0 timestep-by-timestep, feeding s into layer 1+ at the end of each tick.
         for t in range(S):
             # Layer 0 step
@@ -104,7 +104,11 @@ class DeeperTrainedSNN:
             layer_in = s
             for k in range(1, len(W_list)):
                 inj_k = layer_in @ W_list[k].T
-                u_k = torch.zeros(B, W_list[k].shape[0], dtype=x.dtype) if t == 0 else self._higher_state[k - 1]
+                u_k = (
+                    torch.zeros(B, W_list[k].shape[0], dtype=x.dtype, device=x.device)
+                    if t == 0
+                    else self._higher_state[k - 1]
+                )
                 u_k = u_k * decay + inj_k
                 s_k = _SpikeFn.apply(u_k, self.threshold, self.surrogate_slope)
                 u_k = u_k - s_k * self.threshold

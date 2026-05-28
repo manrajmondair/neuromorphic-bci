@@ -94,14 +94,17 @@ def _stream_trained_snn(snn, et, en, test_idx, split_starts):
 
     preds = np.zeros((test_idx.size, 2), dtype=np.float32)
     latencies = np.zeros(test_idx.size, dtype=np.float64)
+    # The trained model's weights may live on CUDA after the CUDA-aware fit()
+    # patch — keep the per-bin input tensor on whatever device W lives on.
+    device = W.device
     with torch.no_grad():
         for k, t in enumerate(test_idx):
-            x_t = torch.from_numpy(x_all[t : t + 1])
+            x_t = torch.from_numpy(x_all[t : t + 1]).to(device)
             start = time.perf_counter()
             z = snn._encode(x_t, W)
             y_pred = z @ W_out.T + b_out
             latencies[k] = time.perf_counter() - start
-            preds[k] = y_pred.numpy()[0]
+            preds[k] = y_pred.cpu().numpy()[0]
     return preds, latencies
 
 

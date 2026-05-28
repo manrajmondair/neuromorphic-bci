@@ -25,7 +25,10 @@ echo "== current cluster tree =="
 find results/cluster -type f | sort
 
 if [[ -n "$(git status --porcelain results/cluster cluster_logs 2>/dev/null)" ]]; then
-  git add results/cluster cluster_logs 2>/dev/null || true
+  # Do NOT swallow git failures (`|| true`) — a lock file or pre-commit hook
+  # error would otherwise let `git commit` quietly commit whatever was
+  # already staged, which is almost never what we want.
+  git add results/cluster cluster_logs
   git status --short results/cluster cluster_logs
   git commit -m "$msg"
   git push origin main

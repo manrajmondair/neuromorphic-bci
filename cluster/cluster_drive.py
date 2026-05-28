@@ -299,7 +299,7 @@ echo "--- submitted ---"
     }
 
 
-def submit_via_login_clone(sbatch_path: Path, timeout_s: int = 180) -> int:
+def submit_via_login_clone(sbatch_path: Path, timeout_s: int = 600) -> int:
     """Submit a sbatch file via a short-lived clone of the login pod. Returns SLURM job_id."""
     pod_name = f"submit-{uuid.uuid4().hex[:6]}"
     relpath = sbatch_path.as_posix()
@@ -622,47 +622,146 @@ def cmd_log(args):
 
 def cmd_pull(args):
     """Tar /home/manraj/.../results/cluster on the cluster, base64 it to stdout,
-    and untar locally."""
+    and untar locally.
+
+    kubectl logs has a default container-log rotation cap (~10 MiB on most
+    setups). To detect truncation we frame the base64 stream with sentinels
+    plus the expected (pre-base64) byte count, and verify locally.
+    """
     script = (
-        f"cd {REPO_DIR} && tar c results/cluster/ 2>/dev/null | base64"
+        f"cd {REPO_DIR} && "
+        # write the tar to a temp file so we can stat it for an exact size
+        # before base64-encoding (catches truncation on the read side too).
+        f"_tarfile=$(mktemp /tmp/results-cluster.XXXXXX.tar) && "
+        f"tar cf $_tarfile results/cluster/ 2>/dev/null && "
+        f"_size=$(stat -c '%s' $_tarfile) && "
+        f"echo \"TAR_SIZE=$_size\" && "
+        f"echo BASE64_BEGIN && base64 < $_tarfile && echo BASE64_END && "
+        f"rm -f $_tarfile"
     )
-    log = run_pod("pull-results", script, mount_home=True, timeout_s=180)
-    # Pod log includes everything the container wrote; the base64 tarball is
-    # the only thing the script emits. Strip whitespace and decode.
-    blob = "".join(log.split())
-    if not blob:
-        raise RuntimeError("retrieval pod produced no output")
+    log = run_pod("pull-results", script, mount_home=True, timeout_s=300)
+    expected_size = _parse_tar_size_or_die(log)
+    blob = _extract_b64_or_die(log)
     tar_bytes = base64.b64decode(blob)
+    if len(tar_bytes) != expected_size:
+        raise RuntimeError(
+            f"pull truncated: decoded {len(tar_bytes)} bytes but pod reported "
+            f"{expected_size}. kubectl logs likely rotated mid-stream."
+        )
     out_dir = Path(args.out_dir or ".")
     with tarfile.open(fileobj=BytesIO(tar_bytes)) as tf:
         tf.extractall(out_dir)
     n = sum(1 for _ in (out_dir / "results" / "cluster").rglob("*") if _.is_file())
-    logger.info("extracted %d files into %s/results/cluster/", n, out_dir)
+    logger.info("extracted %d files (%d bytes) into %s/results/cluster/",
+                n, len(tar_bytes), out_dir)
+
+
+def _parse_tar_size_or_die(log: str) -> int:
+    for line in log.splitlines():
+        if line.startswith("TAR_SIZE="):
+            return int(line.split("=", 1)[1])
+    raise RuntimeError("retrieval pod did not emit a TAR_SIZE sentinel")
+
+
+def _extract_b64_or_die(log: str) -> str:
+    lines = log.splitlines()
+    try:
+        i = lines.index("BASE64_BEGIN")
+        j = lines.index("BASE64_END")
+    except ValueError as e:
+        raise RuntimeError(
+            "retrieval pod base64 stream missing BEGIN/END sentinels — output "
+            "may have been truncated by kubectl logs rotation"
+        ) from e
+    if j <= i:
+        raise RuntimeError("BASE64_END seen before BASE64_BEGIN; corrupt pod log")
+    return "".join(s.strip() for s in lines[i + 1 : j])
 
 
 def cmd_pull_partial(args):
     """Pull a single in-flight JSON file (e.g. streaming block_cv.json) without
     waiting for the whole results tree. Useful for peeking at partial progress
-    on a long-running streaming job."""
+    on a long-running streaming job.
+
+    Frames the output with a TAR_SIZE-like sentinel so we can detect a
+    truncation between the cluster's read and our local reconstruction.
+    Refuses to overwrite a good local copy with a shorter (likely partial)
+    one unless --force is set.
+    """
     rel = args.path.lstrip("/")
     if not rel.startswith("results/cluster"):
         raise ValueError("--path must live under results/cluster/")
+    # Reject path-traversal sneakery.
+    if ".." in Path(rel).parts:
+        raise ValueError(f"refusing path with .. component: {rel}")
     script = (
         f"cd {REPO_DIR} && "
-        f"if [ -f {rel} ]; then base64 < {rel}; else echo MISSING; fi"
+        f"if [ -f {rel} ]; then "
+        f"  _size=$(stat -c '%s' {rel}) && "
+        f"  echo \"FILE_SIZE=$_size\" && "
+        f"  echo BASE64_BEGIN && base64 < {rel} && echo BASE64_END; "
+        f"else echo MISSING; fi"
     )
     log = run_pod("pull-partial", script, mount_home=True, timeout_s=120)
-    blob = "".join(log.split())
-    if blob == "MISSING":
+    if "MISSING" in log.splitlines():
         logger.warning("%s: not yet on the cluster", rel)
         return
-    if not blob:
-        raise RuntimeError("retrieval pod produced no output")
+    expected = None
+    for line in log.splitlines():
+        if line.startswith("FILE_SIZE="):
+            expected = int(line.split("=", 1)[1])
+            break
+    if expected is None:
+        raise RuntimeError("partial-pull pod did not emit FILE_SIZE")
+    blob = _extract_b64_or_die(log)
     data = base64.b64decode(blob)
+    if len(data) != expected:
+        raise RuntimeError(
+            f"partial pull truncated: decoded {len(data)} bytes but pod reported "
+            f"{expected}. Aborting before overwriting local file."
+        )
     out_path = Path(args.out_dir or ".") / rel
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists() and out_path.stat().st_size > len(data) and not getattr(args, "force", False):
+        raise RuntimeError(
+            f"local {out_path} is {out_path.stat().st_size} bytes — refusing to "
+            f"overwrite with a smaller {len(data)}-byte pull (likely mid-write). "
+            f"Re-run with --force to override."
+        )
     out_path.write_bytes(data)
     logger.info("wrote %s (%d bytes)", out_path, len(data))
+
+
+def cmd_scancel(args):
+    """Cancel SLURM job(s) as `manraj` via the login-pod-clone pattern.
+
+    slurmrestd DELETE returns success codes but does NOT actually cancel jobs
+    on this cluster (auth surface; the standalone slurm-restapi runs as
+    `nobody`). The only verb that works under either identity is `scancel`
+    invoked inside a login-pod clone — same mechanism as submit.
+    """
+    jids = " ".join(str(int(j)) for j in args.job_ids)
+    pod_name = f"cancel-{uuid.uuid4().hex[:6]}"
+    manifest = _submitter_pod_manifest(pod_name, "dummy.sbatch")
+    manifest["spec"]["containers"][0]["command"] = ["bash", "-c", f"""
+set -euo pipefail
+/usr/sbin/sackd --conf-server slurm-controller.slurm:6817 &
+trap 'kill %1 2>/dev/null || true' EXIT
+for i in $(seq 30); do [ -S /run/slurm/sack.socket ] && break; sleep 1; done
+[ -S /run/slurm/sack.socket ] || {{ echo "sackd socket never appeared"; exit 1; }}
+echo "--- scancel {jids} ---"
+runuser -u {USERNAME} -- bash -lc "scancel {jids} && squeue -u {USERNAME}"
+echo "--- done ---"
+"""]
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(manifest, f); path = f.name
+    try:
+        _kubectl("apply", "-f", path)
+        _kubectl("wait", "--for=jsonpath={.status.phase}=Succeeded",
+                 f"pod/{pod_name}", "-n", NAMESPACE, "--timeout=180s", check=False)
+        print(_kubectl("logs", "-n", NAMESPACE, pod_name).stdout)
+    finally:
+        _kubectl("delete", "pod", pod_name, "-n", NAMESPACE, "--wait=false", check=False)
 
 
 def main():
@@ -682,7 +781,10 @@ def main():
     sp.add_argument("path",
                     help="repo-relative path under results/cluster/ (e.g. results/cluster/block_cv/block_cv.json)")
     sp.add_argument("--out-dir", default=".")
+    sp.add_argument("--force", action="store_true",
+                    help="overwrite local file even if it's larger than the pulled bytes")
     sp.set_defaults(fn=cmd_pull_partial)
+    sp = sub.add_parser("scancel"); sp.add_argument("job_ids", nargs="+"); sp.set_defaults(fn=cmd_scancel)
     args = ap.parse_args()
     args.fn(args)
 

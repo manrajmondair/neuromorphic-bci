@@ -129,6 +129,16 @@ Sweep over `(hidden_dim, k_history)` recording test R² *and* the actual synapti
 | 512 | 4 | +0.5463 ± 0.0046 | 2,926 | 67,299 | 87,781 |
 | 512 | 8 | +0.5353 ± 0.0069 | 3,032 | 69,738 | 90,963 |
 
+## Bin-size sweep × trained SNN
+
+Extends results/bin_sweep/* (ridge + reservoir SNN) to the trained SNN. Confirms the bin-width choice for the headline decoder.
+
+| bin_ms | f=1.00 | f=0.50 | f=0.25 | f=0.10 |
+|---:|---:|---:|---:|---:|
+| 20 | +0.3297 ± 0.0041 | +0.1941 ± 0.0014 | +0.1077 ± 0.0018 | +0.0563 ± 0.0007 |
+| 50 | +0.5437 ± 0.0027 | +0.4190 ± 0.0007 | +0.2460 ± 0.0032 | +0.1088 ± 0.0015 |
+| 100 | +0.6202 ± 0.0009 | +0.4997 ± 0.0031 | +0.3030 ± 0.0064 | +0.1018 ± 0.0046 |
+
 ## Test-time channel dropout
 
 Models trained once on clean data; evaluated under random channel-mask test perturbations across multiple masks per dropout fraction. The implantable-BCI relevance check.

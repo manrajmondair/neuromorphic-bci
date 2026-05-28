@@ -171,6 +171,13 @@ def main() -> int:
                     energy_pj.get("loihi2", float("nan")),
                 )
 
+                # Free GPU residency between cells. Without this, the 60-cell
+                # sweep at h=512/k=8 accumulates ~340 MB activation tensors +
+                # model weights per cell until the next .fit() OOMs.
+                del snn, y_pred, ops
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
                 # Stream after every config so partial results survive crashes.
                 args.out.write_text(json.dumps({"rows": rows}, indent=2))
 
