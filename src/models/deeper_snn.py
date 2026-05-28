@@ -131,6 +131,9 @@ class DeeperTrainedSNN:
         torch.manual_seed(self.seed)
         rng = np.random.default_rng(self.seed)
 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("deeper_snn: device=%s", device)
+
         x_all = _sparse_events_to_subbin_counts(
             event_times, event_neurons, self.num_neurons,
             self.bin_size_ms, self.num_sub_bins,
@@ -138,33 +141,41 @@ class DeeperTrainedSNN:
         split_starts = (int(train_idx.min()), int(val_idx.min()))
         x_all = _stack_history(x_all, self.k_history, split_starts)
 
-        x_train = torch.from_numpy(x_all[train_idx])
-        x_val = torch.from_numpy(x_all[val_idx])
-        y_train = torch.from_numpy(np.asarray(velocity[train_idx], dtype=np.float32))
-        y_val = torch.from_numpy(np.asarray(velocity[val_idx], dtype=np.float32))
+        x_train = torch.from_numpy(x_all[train_idx]).to(device)
+        x_val = torch.from_numpy(x_all[val_idx]).to(device)
+        y_train = torch.from_numpy(np.asarray(velocity[train_idx], dtype=np.float32)).to(device)
+        y_val = torch.from_numpy(np.asarray(velocity[val_idx], dtype=np.float32)).to(device)
 
         # Allocate params: W_list, optional R_list, readout.
         scale0 = 1.0 / np.sqrt(self.num_neurons)
         W_list_params: list[nn.Parameter] = [
-            nn.Parameter(torch.randn(self.hidden_dims[0], self.num_neurons) * scale0)
+            nn.Parameter(torch.randn(self.hidden_dims[0], self.num_neurons, device=device) * scale0)
         ]
         for k in range(1, len(self.hidden_dims)):
             scale_k = 1.0 / np.sqrt(self.hidden_dims[k - 1])
             W_list_params.append(
-                nn.Parameter(torch.randn(self.hidden_dims[k], self.hidden_dims[k - 1]) * scale_k)
+                nn.Parameter(
+                    torch.randn(self.hidden_dims[k], self.hidden_dims[k - 1], device=device) * scale_k
+                )
             )
         R_list_params: list[nn.Parameter | None] = []
         if self.recurrent:
             for k in range(len(self.hidden_dims)):
                 scale_r = 1.0 / np.sqrt(self.hidden_dims[k])
                 R_list_params.append(
-                    nn.Parameter(torch.randn(self.hidden_dims[k], self.hidden_dims[k]) * scale_r * 0.3)
+                    nn.Parameter(
+                        torch.randn(self.hidden_dims[k], self.hidden_dims[k], device=device)
+                        * scale_r * 0.3
+                    )
                 )
         else:
             R_list_params = [None] * len(self.hidden_dims)
 
-        W_out = nn.Parameter(torch.randn(2, self.hidden_dims[-1]) * (1.0 / np.sqrt(self.hidden_dims[-1])))
-        b_out = nn.Parameter(torch.zeros(2))
+        W_out = nn.Parameter(
+            torch.randn(2, self.hidden_dims[-1], device=device) * (1.0 / np.sqrt(self.hidden_dims[-1]))
+        )
+        b_out = nn.Parameter(torch.zeros(2, device=device))
+        self._device = device
 
         params = list(W_list_params) + [p for p in R_list_params if p is not None] + [W_out, b_out]
         opt = torch.optim.Adam(params, lr=self.lr, weight_decay=self.weight_decay)
@@ -226,9 +237,10 @@ class DeeperTrainedSNN:
         if split_starts is None:
             split_starts = (int(np.min(idx)),)
         x_all = _stack_history(x_all, self.k_history, split_starts)
-        x = torch.from_numpy(x_all[idx])
+        device = getattr(self, "_device", self._params["W_out"].device)
+        x = torch.from_numpy(x_all[idx]).to(device)
         self._higher_state = []
         with torch.no_grad():
             z = self._encode(x, self._params["W_list"], self._params["R_list"])
             y_pred = z @ self._params["W_out"].T + self._params["b_out"]
-        return y_pred.numpy()
+        return y_pred.cpu().numpy()
