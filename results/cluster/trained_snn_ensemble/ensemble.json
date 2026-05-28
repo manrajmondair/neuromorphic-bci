@@ -1,0 +1,143 @@
+{
+  "model": "trained_snn_ensemble",
+  "dataset": "NLB_MC_RTT",
+  "metric": "velocity_r2",
+  "config": {
+    "hidden_dim": 256,
+    "tau_ms": 10.0,
+    "threshold": 0.3,
+    "k_history": 4,
+    "epochs_max": 100,
+    "patience": 18,
+    "n_boot": 1000,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "n_seeds": 10,
+    "event_budgets": [
+      1.0,
+      0.5,
+      0.25,
+      0.1
+    ]
+  },
+  "results": [
+    {
+      "model": "trained_snn_ensemble",
+      "event_budget": 1.0,
+      "n_seeds": 10,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "ensemble_r2_vx": 0.5473649750302891,
+      "ensemble_r2_vy": 0.549259452912356,
+      "ensemble_r2_joint": 0.5480706023083999,
+      "ensemble_r2_joint_ci_lo": 0.5230340408638521,
+      "ensemble_r2_joint_ci_hi": 0.5707893285441927,
+      "individual_r2_joint_mean": 0.5406983881753696,
+      "individual_r2_joint_std": 0.0034651563950923955,
+      "individual_r2_joint_best": 0.547759151798896,
+      "ensemble_gain": 0.0073722141330302415,
+      "n_boot": 1000
+    },
+    {
+      "model": "trained_snn_ensemble",
+      "event_budget": 0.5,
+      "n_seeds": 10,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "ensemble_r2_vx": 0.46426443682510643,
+      "ensemble_r2_vy": 0.35293574135921035,
+      "ensemble_r2_joint": 0.42279836055108855,
+      "ensemble_r2_joint_ci_lo": 0.39046313979071845,
+      "ensemble_r2_joint_ci_hi": 0.4501578487038998,
+      "individual_r2_joint_mean": 0.4182363194215151,
+      "individual_r2_joint_std": 0.001495898456046026,
+      "individual_r2_joint_best": 0.42011956626403113,
+      "ensemble_gain": 0.004562041129573424,
+      "n_boot": 1000
+    },
+    {
+      "model": "trained_snn_ensemble",
+      "event_budget": 0.25,
+      "n_seeds": 10,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "ensemble_r2_vx": 0.2803866115377136,
+      "ensemble_r2_vy": 0.1971827331967536,
+      "ensemble_r2_joint": 0.24939605379209395,
+      "ensemble_r2_joint_ci_lo": 0.2176931943319715,
+      "ensemble_r2_joint_ci_hi": 0.27949582476101553,
+      "individual_r2_joint_mean": 0.24657245329772087,
+      "individual_r2_joint_std": 0.002967042739255714,
+      "individual_r2_joint_best": 0.25079225139997674,
+      "ensemble_gain": 0.0028236004943730797,
+      "n_boot": 1000
+    },
+    {
+      "model": "trained_snn_ensemble",
+      "event_budget": 0.1,
+      "n_seeds": 10,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "ensemble_r2_vx": 0.14173981323190632,
+      "ensemble_r2_vy": 0.060933659197685786,
+      "ensemble_r2_joint": 0.1116423245963778,
+      "ensemble_r2_joint_ci_lo": 0.0846064976256002,
+      "ensemble_r2_joint_ci_hi": 0.13746582515405886,
+      "individual_r2_joint_mean": 0.10681924942306624,
+      "individual_r2_joint_std": 0.003482591793854023,
+      "individual_r2_joint_best": 0.11039182938055347,
+      "ensemble_gain": 0.004823075173311556,
+      "n_boot": 1000
+    }
+  ]
+}
