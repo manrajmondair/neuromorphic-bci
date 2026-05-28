@@ -35,6 +35,7 @@ import numpy as np
 
 from src.data.preprocess import load_processed
 from src.evaluation.metrics import velocity_r2, velocity_r2_bootstrap
+from src.features.event_budget import restrict_to_event_budget
 from src.features.spike_counts import counts_from_events, stack_lag_features
 from src.models.ridge_decoder import DEFAULT_ALPHAS, RidgeDecoder
 from src.models.trained_snn import TrainedLatencySNN
@@ -92,6 +93,13 @@ def main() -> int:
     p.add_argument("--n-folds", type=int, default=4)
     p.add_argument("--boundary-gap", type=int, default=1)
     p.add_argument("--seeds", type=int, nargs="+", default=[0])
+    p.add_argument(
+        "--event-budgets",
+        type=float,
+        nargs="+",
+        default=[1.0],
+        help="event budgets to sweep across (default keeps all events)",
+    )
     p.add_argument("--hidden-dim", type=int, default=128)
     p.add_argument("--k-history", type=int, default=4)
     p.add_argument("--threshold", type=float, default=0.30)
@@ -108,67 +116,86 @@ def main() -> int:
 
     data = load_processed(args.processed_path)
     y = np.asarray(data["velocity"], dtype=np.float32)
-    spike_counts = np.asarray(data["spike_counts"], dtype=np.float32)
-    et = data["event_times"]
-    en = data["event_neurons"]
-    num_bins, num_neurons = spike_counts.shape
+    num_bins = int(data["spike_counts"].shape[0])
+    num_neurons = int(data["num_neurons"])
     bin_size_ms = int(data["bin_size_ms"])
 
     folds = make_folds(num_bins, n_folds=args.n_folds, boundary_gap=args.boundary_gap)
 
+    # Cache budget-filtered event lists / spike-count matrices so the
+    # inner loops don't recompute them per fold or seed.
+    budget_cache: dict[float, tuple[np.ndarray, list, list]] = {}
+    for f in args.event_budgets:
+        sub = restrict_to_event_budget(data, fraction=f)
+        budget_cache[float(f)] = (
+            np.asarray(sub["spike_counts"], dtype=np.float32),
+            sub["event_times"],
+            sub["event_neurons"],
+        )
+
     rows: list[dict] = []
-    for fold in folds:
-        train_idx, val_idx, test_idx = fold["train_idx"], fold["val_idx"], fold["test_idx"]
-        logger.info("=" * 72)
-        logger.info("fold %d: train=%d val=%d test=%d (bins %d..%d)",
-                    fold["fold"], train_idx.size, val_idx.size, test_idx.size,
-                    int(test_idx.min()), int(test_idx.max()))
-        logger.info("=" * 72)
+    for f in args.event_budgets:
+        spike_counts, et, en = budget_cache[float(f)]
+        logger.info("#" * 72)
+        logger.info("event budget f=%.2f  (events kept = %d)", f, sum(t.size for t in et))
+        logger.info("#" * 72)
+        for fold in folds:
+            train_idx, val_idx, test_idx = fold["train_idx"], fold["val_idx"], fold["test_idx"]
+            logger.info("=" * 72)
+            logger.info("f=%.2f fold %d: train=%d val=%d test=%d (bins %d..%d)",
+                        f, fold["fold"], train_idx.size, val_idx.size, test_idx.size,
+                        int(test_idx.min()), int(test_idx.max()))
+            logger.info("=" * 72)
 
-        for seed in args.seeds:
-            set_global_seed(seed)
+            for seed in args.seeds:
+                set_global_seed(seed)
 
-            for lag in (0, 4):
-                y_pred, alpha = _fit_ridge(spike_counts, y, train_idx, val_idx, test_idx, lag)
-                r2 = velocity_r2(y[test_idx], y_pred)
-                r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
-                model = "ridge" if lag == 0 else "ridge_lag4"
-                rows.append({
-                    "model": model, "fold": int(fold["fold"]), "seed": int(seed),
-                    "train_size": int(train_idx.size),
-                    "test_size": int(test_idx.size),
-                    "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
-                    "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
-                    "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
-                    "best_alpha": alpha, "n_boot": int(args.n_boot),
-                })
-                logger.info("%-11s fold=%d seed=%d  r2=%+.4f [%.4f, %.4f]",
-                            model, fold["fold"], seed, r2["r2_joint"],
-                            r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
+                for lag in (0, 4):
+                    y_pred, alpha = _fit_ridge(spike_counts, y, train_idx, val_idx, test_idx, lag)
+                    r2 = velocity_r2(y[test_idx], y_pred)
+                    r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
+                    model = "ridge" if lag == 0 else "ridge_lag4"
+                    rows.append({
+                        "model": model, "event_budget": float(f),
+                        "fold": int(fold["fold"]), "seed": int(seed),
+                        "train_size": int(train_idx.size),
+                        "test_size": int(test_idx.size),
+                        "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
+                        "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
+                        "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
+                        "best_alpha": alpha, "n_boot": int(args.n_boot),
+                    })
+                    logger.info("%-11s f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f]",
+                                model, f, fold["fold"], seed, r2["r2_joint"],
+                                r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
 
-            if not args.skip_snn:
-                y_pred, val_r2 = _fit_snn(
-                    et, en, y, train_idx, val_idx, test_idx,
-                    num_neurons=num_neurons, bin_size_ms=bin_size_ms,
-                    hidden_dim=args.hidden_dim, k_history=args.k_history,
-                    threshold=args.threshold, epochs=args.epochs,
-                    patience=args.patience, seed=seed,
-                )
-                r2 = velocity_r2(y[test_idx], y_pred)
-                r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
-                rows.append({
-                    "model": "trained_snn", "fold": int(fold["fold"]), "seed": int(seed),
-                    "train_size": int(train_idx.size),
-                    "test_size": int(test_idx.size),
-                    "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
-                    "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
-                    "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
-                    "best_val_r2": float(val_r2),
-                    "n_boot": int(args.n_boot),
-                })
-                logger.info("trained_snn fold=%d seed=%d  r2=%+.4f [%.4f, %.4f] val_r2=%+.4f",
-                            fold["fold"], seed, r2["r2_joint"],
-                            r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"], val_r2)
+                if not args.skip_snn:
+                    y_pred, val_r2 = _fit_snn(
+                        et, en, y, train_idx, val_idx, test_idx,
+                        num_neurons=num_neurons, bin_size_ms=bin_size_ms,
+                        hidden_dim=args.hidden_dim, k_history=args.k_history,
+                        threshold=args.threshold, epochs=args.epochs,
+                        patience=args.patience, seed=seed,
+                    )
+                    r2 = velocity_r2(y[test_idx], y_pred)
+                    r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
+                    rows.append({
+                        "model": "trained_snn", "event_budget": float(f),
+                        "fold": int(fold["fold"]), "seed": int(seed),
+                        "train_size": int(train_idx.size),
+                        "test_size": int(test_idx.size),
+                        "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
+                        "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
+                        "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
+                        "best_val_r2": float(val_r2),
+                        "n_boot": int(args.n_boot),
+                    })
+                    logger.info("trained_snn f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f] val_r2=%+.4f",
+                                f, fold["fold"], seed, r2["r2_joint"],
+                                r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"], val_r2)
+
+                # Stream progress to disk after every cell so partial-run JSONs are usable.
+                (args.out_dir / "block_cv.json").write_text(json.dumps({"rows": rows}, indent=2))
 
     (args.out_dir / "block_cv.json").write_text(json.dumps({"rows": rows}, indent=2))
 
