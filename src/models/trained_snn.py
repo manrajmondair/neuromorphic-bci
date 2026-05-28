@@ -231,6 +231,11 @@ class TrainedLatencySNN:
         torch.manual_seed(self.seed)
         rng = np.random.default_rng(self.seed)
 
+        # Use CUDA if available — BPTT through a 50-step LIF on ~10k training
+        # bins runs ~30x faster on an H100 than on CPU.
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("trained_snn: device=%s", device)
+
         # Pre-bucket events once, then stack history.
         x_all = _sparse_events_to_subbin_counts(
             event_times, event_neurons, self.num_neurons,
@@ -245,16 +250,19 @@ class TrainedLatencySNN:
             x_all.shape, self.k_history, x_all.shape[1],
         )
 
-        x_train = torch.from_numpy(x_all[train_idx])
-        x_val = torch.from_numpy(x_all[val_idx])
-        y_train = torch.from_numpy(np.asarray(velocity[train_idx], dtype=np.float32))
-        y_val = torch.from_numpy(np.asarray(velocity[val_idx], dtype=np.float32))
+        x_train = torch.from_numpy(x_all[train_idx]).to(device)
+        x_val = torch.from_numpy(x_all[val_idx]).to(device)
+        y_train = torch.from_numpy(np.asarray(velocity[train_idx], dtype=np.float32)).to(device)
+        y_val = torch.from_numpy(np.asarray(velocity[val_idx], dtype=np.float32)).to(device)
 
         scale = 1.0 / np.sqrt(self.num_neurons)
-        W = nn.Parameter(torch.randn(self.hidden_dim, self.num_neurons) * scale)
-        W_out = nn.Parameter(torch.randn(2, self.hidden_dim) * (1.0 / np.sqrt(self.hidden_dim)))
-        b_out = nn.Parameter(torch.zeros(2))
+        W = nn.Parameter(torch.randn(self.hidden_dim, self.num_neurons, device=device) * scale)
+        W_out = nn.Parameter(
+            torch.randn(2, self.hidden_dim, device=device) * (1.0 / np.sqrt(self.hidden_dim))
+        )
+        b_out = nn.Parameter(torch.zeros(2, device=device))
         opt = torch.optim.Adam([W, W_out, b_out], lr=self.lr, weight_decay=self.weight_decay)
+        self._device = device
 
         best_val_r2 = float("-inf")
         best_state = {"W": W.detach().clone(), "W_out": W_out.detach().clone(), "b_out": b_out.detach().clone()}
@@ -308,15 +316,15 @@ class TrainedLatencySNN:
 
     @property
     def W(self) -> np.ndarray | None:
-        return self._W.detach().numpy() if self._W is not None else None
+        return self._W.detach().cpu().numpy() if self._W is not None else None
 
     @property
     def W_out(self) -> np.ndarray | None:
-        return self._W_out.detach().numpy() if self._W_out is not None else None
+        return self._W_out.detach().cpu().numpy() if self._W_out is not None else None
 
     @property
     def b_out(self) -> np.ndarray | None:
-        return self._b_out.detach().numpy() if self._b_out is not None else None
+        return self._b_out.detach().cpu().numpy() if self._b_out is not None else None
 
     def predict(
         self,
@@ -327,6 +335,7 @@ class TrainedLatencySNN:
     ) -> np.ndarray:
         if self._W is None or self._W_out is None or self._b_out is None:
             raise RuntimeError("TrainedLatencySNN.predict() called before fit()")
+        device = getattr(self, "_device", self._W.device)
         x_all = _sparse_events_to_subbin_counts(
             event_times, event_neurons, self.num_neurons,
             self.bin_size_ms, self.num_sub_bins,
@@ -336,8 +345,8 @@ class TrainedLatencySNN:
         if split_starts is None:
             split_starts = (int(np.min(idx)),)
         x_all = _stack_history(x_all, self.k_history, split_starts)
-        x = torch.from_numpy(x_all[idx])
+        x = torch.from_numpy(x_all[idx]).to(device)
         with torch.no_grad():
             z = self._encode(x, self._W)
             y_pred = z @ self._W_out.T + self._b_out
-        return y_pred.numpy()
+        return y_pred.cpu().numpy()

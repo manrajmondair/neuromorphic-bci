@@ -66,9 +66,11 @@ def _count_synops(
 
     # Forward through the trained LIF to count hidden spikes (no grad).
     # Use the model's own _encode against its trained _W weights so the
-    # decay constant + threshold logic stays in one place.
+    # decay constant + threshold logic stays in one place. The model is on
+    # whatever device fit() left it on (CUDA when available).
     with torch.no_grad():
-        xt = torch.from_numpy(x_test).to(dtype=torch.float32)
+        device = snn._W.device
+        xt = torch.from_numpy(x_test).to(device=device, dtype=torch.float32)
         z = snn._encode(xt, snn._W)   # [n_test, H], per-bin total hidden spikes
         hidden_spikes_per_bin = z.sum(dim=1).cpu().numpy().astype(np.float64)
 
