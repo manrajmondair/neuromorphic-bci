@@ -287,6 +287,12 @@ def cmd_bootstrap(args):
     """Clone the repo onto /home/manraj and run preprocessing."""
     script = textwrap.dedent(f"""
         set -euo pipefail
+        # The python:3.11 image has no /etc/passwd entry for UID 10010, so
+        # ~ expands to / which fails on first write. Pin HOME + XDG dirs to
+        # the user's home before anything touches a cache.
+        export HOME=/home/{USERNAME}
+        export XDG_CACHE_HOME=/home/{USERNAME}/.cache
+        mkdir -p "$XDG_CACHE_HOME"
         cd /home/{USERNAME}
         if [ -d neuromorphic-bci/.git ]; then
             cd neuromorphic-bci
