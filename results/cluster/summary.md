@@ -73,6 +73,11 @@ Same 4-shuffle battery as `results/snn/null_battery.json` but with the trained S
 | `circular_shift` | 0.50 | +0.4184 | -0.0027 | [-0.0070, +0.0016] | 0.04762 | 20 |
 | `order_shuffle` | 0.25 | +0.2472 | +0.2472 | [+0.2472, +0.2472] | 1 | 20 |
 | `phase_random` | 0.25 | +0.2472 | +0.2306 | [+0.2130, +0.2420] | 0.04762 | 20 |
+| `neuron_shuffle` | 0.25 | +0.2472 | +0.2457 | [+0.2413, +0.2492] | 0.381 | 20 |
+| `circular_shift` | 0.25 | +0.2472 | -0.0012 | [-0.0078, +0.0014] | 0.04762 | 20 |
+| `order_shuffle` | 0.10 | +0.1071 | +0.1071 | [+0.1071, +0.1071] | 1 | 20 |
+| `phase_random` | 0.10 | +0.1071 | +0.0977 | [+0.0842, +0.1087] | 0.1905 | 20 |
+| `neuron_shuffle` | 0.10 | +0.1071 | +0.1038 | [+0.0993, +0.1097] | 0.1905 | 20 |
 
 ## Earliest vs random vs latest event budget
 
@@ -115,4 +120,21 @@ Sweep over `(hidden_dim, k_history)` recording test R² *and* the actual synapti
 | 512 | 2 | +0.4188 ± 0.0068 | 2,519 | 57,941 | 75,575 |
 | 512 | 4 | +0.5463 ± 0.0046 | 2,926 | 67,299 | 87,781 |
 | 512 | 8 | +0.5353 ± 0.0069 | 3,032 | 69,738 | 90,963 |
+
+## Test-time channel dropout
+
+Models trained once on clean data; evaluated under random channel-mask test perturbations across multiple masks per dropout fraction. The implantable-BCI relevance check.
+
+| Model | p | R² (mean ± std across masks) |
+|---|---:|---:|
+| `ridge_lag4` | 0.00 | +0.5266 ± 0.0000 |
+| `ridge_lag4` | 0.10 | +0.4701 ± 0.0431 |
+| `ridge_lag4` | 0.20 | +0.4176 ± 0.0371 |
+| `ridge_lag4` | 0.30 | +0.3343 ± 0.0705 |
+| `ridge_lag4` | 0.50 | +0.2304 ± 0.0660 |
+| `trained_snn` | 0.00 | +0.5426 ± 0.0000 |
+| `trained_snn` | 0.10 | +0.4824 ± 0.0423 |
+| `trained_snn` | 0.20 | +0.4284 ± 0.0402 |
+| `trained_snn` | 0.30 | +0.3447 ± 0.0771 |
+| `trained_snn` | 0.50 | +0.2326 ± 0.0585 |
 
