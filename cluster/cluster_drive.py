@@ -162,7 +162,14 @@ def run_pod(name: str, script: str, image: str = HELPER_IMAGE,
             "restartPolicy": "Never",
             "securityContext": {"runAsUser": run_as_user,
                                 "runAsGroup": run_as_user,
-                                "fsGroup": run_as_user},
+                                "fsGroup": run_as_user,
+                                # The slurm-shared-home volume is 15 TB. Without
+                                # OnRootMismatch, kubelet recursively chowns the
+                                # entire tree every pod start (minutes-to-hours).
+                                # OnRootMismatch only chowns if the root dir
+                                # group doesn't already match; for this volume
+                                # it's already 10010, so this is a no-op.
+                                "fsGroupChangePolicy": "OnRootMismatch"},
             "containers": [{
                 "name": "main",
                 "image": image,
@@ -201,6 +208,125 @@ def run_pod(name: str, script: str, image: str = HELPER_IMAGE,
 # ---------------------------------------------------------------------------
 # SLURM job helpers
 # ---------------------------------------------------------------------------
+
+
+def _submitter_pod_manifest(pod_name: str, sbatch_relpath: str) -> dict:
+    """Pod that mirrors slurm-login-manraj's setup, but with a one-shot
+    command that runs `sbatch <relpath>` as manraj and exits.
+
+    Why not just POST to slurmrestd: slurmrestd is the standalone
+    `slurm-restapi` deployment that runs as `nobody` in a container with no
+    /etc/passwd mapping for manraj. slurmctld rejects its forwarded
+    submissions with `Rejecting authentication of user nobody`. The login
+    image, by contrast, mounts the `login-manraj-users` configmap at
+    /etc/passwd so getpwnam("manraj") returns UID 10010.
+    """
+    return {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"name": pod_name, "namespace": NAMESPACE,
+                     "labels": {"managed-by": "cluster-drive",
+                                "purpose": "submit"}},
+        "spec": {
+            "automountServiceAccountToken": False,
+            "restartPolicy": "Never",
+            "dnsConfig": {"searches": ["slurm-workers-slurm.slurm.svc.cluster.local"]},
+            "initContainers": [{
+                "name": "initconf",
+                "image": "docker.io/library/alpine:3.21",
+                "command": ["sh", "-c", """
+set -eu
+SLURM_DIR=/mnt/etc/slurm
+mkdir -p "$SLURM_DIR"
+find /mnt/slurm -type f -name "*.conf" -print0 | xargs -0r cp -vt "$SLURM_DIR"
+find /mnt/slurm -type f -name "*.key"  -print0 | xargs -0r cp -vt "$SLURM_DIR"
+chown -R 401:401 "$SLURM_DIR"
+find "$SLURM_DIR" -name "*.conf" -exec chmod 644 {} +
+find "$SLURM_DIR" -name "*.key"  -exec chmod 600 {} +
+ls -lAF "$SLURM_DIR"
+                """],
+                "volumeMounts": [
+                    {"name": "slurm-etc",    "mountPath": "/mnt/etc/slurm"},
+                    {"name": "slurm-config", "mountPath": "/mnt/slurm", "readOnly": True},
+                ],
+            }],
+            "containers": [{
+                "name": "submit",
+                "image": "ghcr.io/mihai-amp/login:25.11-ubuntu24.04",
+                "env": [{"name": "SACKD_OPTIONS",
+                         "value": "--conf-server slurm-controller.slurm:6817"}],
+                "command": ["bash", "-c", f"""
+set -euo pipefail
+# Start sackd in background — same daemon the regular login pod runs.
+/usr/sbin/sackd --conf-server slurm-controller.slurm:6817 &
+SACKD_PID=$!
+trap 'kill $SACKD_PID 2>/dev/null || true' EXIT
+# Wait for the auth socket to materialize so sbatch can authenticate.
+for i in $(seq 30); do
+  [ -S /run/slurm/sack.socket ] && break
+  sleep 1
+done
+[ -S /run/slurm/sack.socket ] || {{ echo "sackd socket never appeared"; exit 1; }}
+echo "--- submitting {sbatch_relpath} as manraj ---"
+runuser -u manraj -- bash -lc "cd {REPO_DIR} && mkdir -p cluster_logs && sbatch {sbatch_relpath}"
+echo "--- submitted ---"
+                """],
+                "volumeMounts": [
+                    {"name": "shared-home",  "mountPath": "/home"},
+                    {"name": "etc-users",    "mountPath": "/etc/passwd",
+                     "subPath": "passwd"},
+                    {"name": "etc-users",    "mountPath": "/etc/group",
+                     "subPath": "group"},
+                    {"name": "slurm-etc",    "mountPath": "/etc/slurm",
+                     "readOnly": True},
+                    {"name": "sackd-dir",    "mountPath": "/run/slurm"},
+                ],
+            }],
+            "volumes": [
+                {"name": "shared-home",
+                 "persistentVolumeClaim": {"claimName": HOME_PVC}},
+                {"name": "etc-users",
+                 "configMap": {"name": f"login-{USERNAME}-users"}},
+                {"name": "slurm-etc",   "emptyDir": {"medium": "Memory"}},
+                {"name": "sackd-dir",   "emptyDir": {"medium": "Memory"}},
+                {"name": "slurm-config",
+                 "projected": {"defaultMode": 0o600, "sources": [
+                     {"secret": {"name": "slurm-auth-slurm",
+                                 "items": [{"key": "slurm.key", "path": "slurm.key"}]}}
+                 ]}},
+            ],
+        },
+    }
+
+
+def submit_via_login_clone(sbatch_path: Path, timeout_s: int = 180) -> int:
+    """Submit a sbatch file via a short-lived clone of the login pod. Returns SLURM job_id."""
+    pod_name = f"submit-{uuid.uuid4().hex[:6]}"
+    relpath = sbatch_path.as_posix()
+    manifest = _submitter_pod_manifest(pod_name, relpath)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(manifest, f)
+        path = f.name
+    try:
+        _kubectl("apply", "-f", path)
+        _kubectl("wait", "--for=jsonpath={.status.phase}=Succeeded",
+                 f"pod/{pod_name}", "-n", NAMESPACE,
+                 f"--timeout={timeout_s}s", check=False)
+        log = _kubectl("logs", "-n", NAMESPACE, pod_name).stdout
+        phase = _kubectl("get", "pod", pod_name, "-n", NAMESPACE,
+                         "-o", "jsonpath={.status.phase}").stdout.strip()
+        if phase != "Succeeded":
+            raise RuntimeError(f"submitter pod {pod_name} ended in {phase}; logs:\n{log}")
+        # sbatch prints "Submitted batch job <jid>" on its stdout.
+        for line in log.splitlines():
+            if line.startswith("Submitted batch job"):
+                jid = int(line.split()[-1])
+                logger.info("submitted %s as job_id=%s", sbatch_path.name, jid)
+                return jid
+        raise RuntimeError(f"no 'Submitted batch job' line in submitter log:\n{log}")
+    finally:
+        _kubectl("delete", "pod", pod_name, "-n", NAMESPACE,
+                 "--wait=false", check=False)
 
 
 def submit_slurm_job(name: str, script: str, *, time_limit_min: int,
@@ -407,27 +533,15 @@ def parse_sbatch(path: Path) -> tuple[dict, str]:
 
 
 def cmd_submit(args):
-    meta, body = parse_sbatch(Path(args.sbatch))
-    logger.info("submitting %s (gpus=%d time=%d min)",
+    meta, _body = parse_sbatch(Path(args.sbatch))
+    logger.info("submitting %s (gpus=%d time=%d min) via login-pod clone",
                 meta["job_name"], meta["gpus"], meta["time_min"])
-    job_id = submit_slurm_job(
-        name=meta["job_name"],
-        script=body,
-        time_limit_min=meta["time_min"],
-        gpus=meta["gpus"],
-        partition=meta["partition"],
-        cpus_per_task=meta["cpus_per_task"],
-    )
+    job_id = submit_via_login_clone(Path(args.sbatch))
     print(json.dumps({"job_id": job_id, **meta}))
 
 
 def _submit_sbatch(name: str) -> int:
-    meta, body = parse_sbatch(Path(f"cluster/sbatch/{name}.sbatch"))
-    return submit_slurm_job(
-        name=meta["job_name"], script=body,
-        time_limit_min=meta["time_min"], gpus=meta["gpus"],
-        partition=meta["partition"], cpus_per_task=meta["cpus_per_task"],
-    )
+    return submit_via_login_clone(Path(f"cluster/sbatch/{name}.sbatch"))
 
 
 def cmd_round1(args):
