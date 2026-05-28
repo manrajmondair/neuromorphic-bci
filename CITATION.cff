@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Sparse Event-Based Decoding for Implantable Brain–Computer Interfaces"
+abstract: >-
+  A controlled study of motor-cortex velocity decoding under progressively
+  sparser spike streams on the Neural Latents Benchmark MC_RTT dataset,
+  comparing a backprop-trained leaky integrate-and-fire spiking neural
+  network against linear baselines and modelling the energy each design
+  would consume on neuromorphic hardware.
+type: software
+authors:
+  - family-names: Mondair
+    given-names: Manraj
+  - family-names: Soto
+    given-names: Alexander
+keywords:
+  - neuromorphic computing
+  - spiking neural networks
+  - brain-computer interface
+  - motor decoding
+  - neural latents benchmark
+license: MIT
+repository-code: "https://github.com/manrajmondair/neuromorphic-bci"
+references:
+  - type: conference-paper
+    title: "Neural Latents Benchmark: Evaluating Latent Variable Models of Neural Population Activity"
+    authors:
+      - family-names: Pei
+        given-names: Felix
+    collection-title: "Advances in Neural Information Processing Systems"
+    year: 2021
