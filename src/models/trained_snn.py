@@ -160,6 +160,7 @@ class TrainedLatencySNN:
         bin_size_ms: int = 50,
         num_sub_bins: int = 10,
         k_history: int = 0,
+        readout_lag: int = 0,
         lr: float = 1e-2,
         weight_decay: float = 1e-4,
         epochs: int = 80,
@@ -172,6 +173,8 @@ class TrainedLatencySNN:
             raise ValueError(f"num_sub_bins must be >= 1, got {num_sub_bins}")
         if k_history < 0:
             raise ValueError(f"k_history must be >= 0, got {k_history}")
+        if readout_lag < 0:
+            raise ValueError(f"readout_lag must be >= 0, got {readout_lag}")
         self.num_neurons = int(num_neurons)
         self.hidden_dim = int(hidden_dim)
         self.tau_ms = float(tau_ms)
@@ -179,6 +182,11 @@ class TrainedLatencySNN:
         self.bin_size_ms = int(bin_size_ms)
         self.num_sub_bins = int(num_sub_bins)
         self.k_history = int(k_history)
+        # If >0, the per-bin hidden features are lag-stacked with the previous
+        # `readout_lag` bins before the readout (history moves from the long
+        # input BPTT sequence to the readout, so the encoder stays trainable on
+        # short single-bin sequences while the readout still sees deep context).
+        self.readout_lag = int(readout_lag)
         self.lr = float(lr)
         self.weight_decay = float(weight_decay)
         self.epochs = int(epochs)
@@ -220,6 +228,23 @@ class TrainedLatencySNN:
             u = u - s * self.threshold
         return z
 
+    @staticmethod
+    def _lag_stack_z(z: torch.Tensor, lag: int) -> torch.Tensor:
+        """Stack per-bin features with the previous `lag` bins (zero-padded).
+
+        `z` is one contiguous split [B, H]; row i gets [z[i], z[i-1], ..., z[i-lag]]
+        with out-of-range history zeroed, mirroring `stack_lag_features` so a bin
+        never borrows features from across a split boundary.
+        """
+        if lag == 0:
+            return z
+        parts = [z]
+        for k in range(1, lag + 1):
+            shifted = torch.zeros_like(z)
+            shifted[k:] = z[:-k]
+            parts.append(shifted)
+        return torch.cat(parts, dim=1)
+
     def fit(
         self,
         event_times: list[np.ndarray],
@@ -244,7 +269,10 @@ class TrainedLatencySNN:
         split_starts: tuple[int, ...] = (
             int(train_idx.min()), int(val_idx.min()),
         )
-        x_all = _stack_history(x_all, self.k_history, split_starts)
+        # With output lag-stacking the encoder stays on single-bin inputs
+        # (history is added after the encoder, on its per-bin features).
+        k_hist_eff = 0 if self.readout_lag > 0 else self.k_history
+        x_all = _stack_history(x_all, k_hist_eff, split_starts)
         logger.info(
             "trained_snn: subbin counts shape=%s k_history=%d -> seq_len=%d",
             x_all.shape, self.k_history, x_all.shape[1],
@@ -257,8 +285,9 @@ class TrainedLatencySNN:
 
         scale = 1.0 / np.sqrt(self.num_neurons)
         W = nn.Parameter(torch.randn(self.hidden_dim, self.num_neurons, device=device) * scale)
+        readout_dim = self.hidden_dim * (self.readout_lag + 1)
         W_out = nn.Parameter(
-            torch.randn(2, self.hidden_dim, device=device) * (1.0 / np.sqrt(self.hidden_dim))
+            torch.randn(2, readout_dim, device=device) * (1.0 / np.sqrt(readout_dim))
         )
         b_out = nn.Parameter(torch.zeros(2, device=device))
         opt = torch.optim.Adam([W, W_out, b_out], lr=self.lr, weight_decay=self.weight_decay)
@@ -269,10 +298,13 @@ class TrainedLatencySNN:
         bad = 0
 
         n_train = x_train.shape[0]
-        batch = self.batch_size if self.batch_size > 0 else n_train
+        # Lag-stacking needs the train bins in contiguous order, so force full
+        # batch (no shuffle) whenever readout_lag is on.
+        full_seq = self.batch_size == 0 or self.readout_lag > 0
+        batch = n_train if full_seq else self.batch_size
 
         for epoch in range(self.epochs):
-            perm = rng.permutation(n_train) if self.batch_size > 0 else np.arange(n_train)
+            perm = np.arange(n_train) if full_seq else rng.permutation(n_train)
             train_loss = 0.0
             n_batches = 0
             for start in range(0, n_train, batch):
@@ -280,6 +312,8 @@ class TrainedLatencySNN:
                 xb = x_train[idx]
                 yb = y_train[idx]
                 z = self._encode(xb, W)
+                if self.readout_lag > 0:
+                    z = self._lag_stack_z(z, self.readout_lag)
                 y_pred = z @ W_out.T + b_out
                 loss = torch.mean((y_pred - yb) ** 2)
                 opt.zero_grad()
@@ -291,6 +325,8 @@ class TrainedLatencySNN:
 
             with torch.no_grad():
                 z_val = self._encode(x_val, W)
+                if self.readout_lag > 0:
+                    z_val = self._lag_stack_z(z_val, self.readout_lag)
                 y_pred_val = z_val @ W_out.T + b_out
                 val_r2 = float(self._joint_r2(y_val, y_pred_val).item())
             self.history.append({"epoch": epoch, "train_mse": float(train_loss), "val_r2": val_r2})
@@ -344,9 +380,12 @@ class TrainedLatencySNN:
         # single contiguous slice (no internal split boundary).
         if split_starts is None:
             split_starts = (int(np.min(idx)),)
-        x_all = _stack_history(x_all, self.k_history, split_starts)
+        k_hist_eff = 0 if self.readout_lag > 0 else self.k_history
+        x_all = _stack_history(x_all, k_hist_eff, split_starts)
         x = torch.from_numpy(x_all[idx]).to(device)
         with torch.no_grad():
             z = self._encode(x, self._W)
+            if self.readout_lag > 0:
+                z = self._lag_stack_z(z, self.readout_lag)
             y_pred = z @ self._W_out.T + self._b_out
         return y_pred.cpu().numpy()

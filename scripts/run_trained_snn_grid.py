@@ -34,7 +34,7 @@ logger = logging.getLogger("run_trained_snn_grid")
 
 
 def fit_one(data, event_budget, seed, hidden_dim, tau_ms, threshold, k_history,
-            num_sub_bins, epochs, patience, n_boot):
+            num_sub_bins, epochs, patience, n_boot, readout_lag=0):
     y = np.asarray(data["velocity"], dtype=np.float32)
     train_idx, val_idx, test_idx = data["train_idx"], data["val_idx"], data["test_idx"]
     num_neurons = int(data["num_neurons"])
@@ -44,7 +44,8 @@ def fit_one(data, event_budget, seed, hidden_dim, tau_ms, threshold, k_history,
     snn = TrainedLatencySNN(
         num_neurons=num_neurons, hidden_dim=hidden_dim, tau_ms=tau_ms,
         threshold=threshold, bin_size_ms=bin_size_ms, k_history=k_history,
-        num_sub_bins=num_sub_bins, epochs=epochs, patience=patience, seed=seed,
+        num_sub_bins=num_sub_bins, readout_lag=readout_lag,
+        epochs=epochs, patience=patience, seed=seed,
     ).fit(et, en, y, train_idx, val_idx)
     split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
     y_pred = snn.predict(et, en, test_idx, split_starts=split_starts)
@@ -64,6 +65,9 @@ def main() -> int:
     p.add_argument("--num-sub-bins-list", type=int, nargs="+", default=[10],
                    help="sub-bin resolutions to grid; fewer sub-bins shorten the BPTT "
                         "sequence so deeper k_history stays trainable")
+    p.add_argument("--readout-lags", type=int, nargs="+", default=[0],
+                   help="output history depth: lag-stack the trained per-bin features "
+                        "before the readout (encoder stays on single-bin inputs)")
     p.add_argument("--stage1-seeds", type=int, nargs="+", default=[0, 1])
     p.add_argument("--stage2-seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--stage2-budgets", type=float, nargs="+", default=[1.0, 0.5, 0.25, 0.1])
@@ -84,30 +88,31 @@ def main() -> int:
     logger.info("STAGE 1: grid k=%s x tau=%s x hidden=%s at f=1.0, seeds=%s",
                 args.k_histories, args.taus, args.hidden_dims, args.stage1_seeds)
     logger.info("=" * 72)
-    for k_hist, tau, hid, nsb in product(args.k_histories, args.taus, args.hidden_dims,
-                                         args.num_sub_bins_list):
+    for k_hist, tau, hid, nsb, rlag in product(args.k_histories, args.taus, args.hidden_dims,
+                                               args.num_sub_bins_list, args.readout_lags):
         for seed in args.stage1_seeds:
             r2, r2_boot, val_r2 = fit_one(
                 data, 1.0, seed, hid, tau, args.threshold, k_hist,
-                nsb, args.epochs, args.patience, args.n_boot)
+                nsb, args.epochs, args.patience, args.n_boot, readout_lag=rlag)
             grid_rows.append({
                 "k_history": k_hist, "tau_ms": tau, "hidden_dim": hid, "num_sub_bins": nsb,
-                "seed": seed, "r2_joint": r2["r2_joint"], "val_r2": val_r2,
+                "readout_lag": rlag, "seed": seed, "r2_joint": r2["r2_joint"], "val_r2": val_r2,
                 "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"], "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
             })
-            combo_val.setdefault((k_hist, tau, hid, nsb), []).append(val_r2)
-            logger.info("grid k=%d tau=%g hidden=%d nsb=%d seed=%d  test=%+.4f val=%+.4f",
-                        k_hist, tau, hid, nsb, seed, r2["r2_joint"], val_r2)
+            combo_val.setdefault((k_hist, tau, hid, nsb, rlag), []).append(val_r2)
+            logger.info("grid k=%d tau=%g hidden=%d nsb=%d rlag=%d seed=%d  test=%+.4f val=%+.4f",
+                        k_hist, tau, hid, nsb, rlag, seed, r2["r2_joint"], val_r2)
             with (args.out_dir / "grid.csv").open("w", newline="") as fh:
                 w = csv.DictWriter(fh, fieldnames=list(grid_rows[0].keys())); w.writeheader(); w.writerows(grid_rows)
 
     best_combo = max(combo_val, key=lambda c: float(np.mean(combo_val[c])))
     best = {"k_history": best_combo[0], "tau_ms": best_combo[1], "hidden_dim": best_combo[2],
-            "num_sub_bins": best_combo[3], "mean_val_r2": float(np.mean(combo_val[best_combo]))}
+            "num_sub_bins": best_combo[3], "readout_lag": best_combo[4],
+            "mean_val_r2": float(np.mean(combo_val[best_combo]))}
     (args.out_dir / "best.json").write_text(json.dumps(best, indent=2))
-    logger.info("STAGE 1 best: k=%d tau=%g hidden=%d nsb=%d (mean val R2=%.4f)",
+    logger.info("STAGE 1 best: k=%d tau=%g hidden=%d nsb=%d rlag=%d (mean val R2=%.4f)",
                 best["k_history"], best["tau_ms"], best["hidden_dim"], best["num_sub_bins"],
-                best["mean_val_r2"])
+                best["readout_lag"], best["mean_val_r2"])
 
     # ---- Stage 2: best combo across all budgets, more seeds ----
     logger.info("=" * 72)
@@ -118,14 +123,15 @@ def main() -> int:
         for seed in args.stage2_seeds:
             r2, r2_boot, val_r2 = fit_one(
                 data, f, seed, best["hidden_dim"], best["tau_ms"], args.threshold,
-                best["k_history"], best["num_sub_bins"], args.epochs, args.patience, args.n_boot)
+                best["k_history"], best["num_sub_bins"], args.epochs, args.patience, args.n_boot,
+                readout_lag=best["readout_lag"])
             final_rows.append({
                 "model": "trained_snn_deep", "event_budget": float(f), "seed": int(seed),
                 "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
                 "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"], "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
                 "best_val_r2": val_r2, "k_history": best["k_history"], "tau_ms": best["tau_ms"],
                 "hidden_dim": best["hidden_dim"], "num_sub_bins": best["num_sub_bins"],
-                "n_boot": int(args.n_boot),
+                "readout_lag": best["readout_lag"], "n_boot": int(args.n_boot),
             })
             logger.info("final f=%.2f seed=%d  test=%+.4f [%.4f, %.4f]",
                         f, seed, r2["r2_joint"], r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
