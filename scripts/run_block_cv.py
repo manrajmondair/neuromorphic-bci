@@ -33,11 +33,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import matplotlib.pyplot as plt
 import numpy as np
 
+from sklearn.linear_model import Ridge
+
 from src.data.preprocess import load_processed
 from src.evaluation.metrics import velocity_r2, velocity_r2_bootstrap
 from src.features.event_budget import restrict_to_event_budget
 from src.features.spike_counts import counts_from_events, stack_lag_features
 from src.models.ridge_decoder import DEFAULT_ALPHAS, RidgeDecoder
+from src.models.snn_decoder import SparseLatencySNN
 from src.models.trained_snn import TrainedLatencySNN
 from src.utils.seed import set_global_seed
 
@@ -85,6 +88,38 @@ def _fit_snn(et, en, velocity, train_idx, val_idx, test_idx,
     return snn.predict(et, en, test_idx, split_starts=split_starts), snn.best_val_r2
 
 
+def _fit_reservoir_snn(et, en, velocity, train_idx, val_idx, test_idx,
+                       num_neurons, bin_size_ms, hidden_dim, tau_ms, lag_bins,
+                       thresholds, alphas, seed):
+    """Fixed random-projection LIF reservoir + lag-stacked ridge readout.
+
+    Numpy-only (no training of the encoder). Encodes once per threshold,
+    builds the boundary-safe history window over the hidden activity, and
+    selects (threshold, ridge alpha) on the fold's val split. Matched to
+    ridge_lag4 / the trained SNN at a k=4 (200 ms) history window so the
+    block-CV comparison is apples-to-apples on temporal context.
+    """
+    split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
+    base = SparseLatencySNN(num_neurons=num_neurons, hidden_dim=hidden_dim,
+                            tau_ms=tau_ms, threshold=float(thresholds[0]),
+                            bin_size_ms=bin_size_ms, n_restarts=1, seed=seed)
+    W = base._init_W(num_neurons, hidden_dim, seed)
+    best = None  # (val_r2, test_pred, threshold, alpha)
+    for thr in thresholds:
+        base.threshold = float(thr)
+        S = base._encode_with_W(W, et, en)
+        mu = S[train_idx].mean(axis=0)
+        sigma = S[train_idx].std(axis=0) + 1e-6
+        F = stack_lag_features(((S - mu) / sigma).astype(np.float32), num_lags=lag_bins,
+                               split_starts=split_starts)
+        for a in alphas:
+            ro = Ridge(alpha=float(a)).fit(F[train_idx], velocity[train_idx])
+            vr = velocity_r2(velocity[val_idx], ro.predict(F[val_idx]))["r2_joint"]
+            if best is None or vr > best[0]:
+                best = (vr, ro.predict(F[test_idx]), float(thr), float(a))
+    return best[1], best[2], best[3]
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--processed-path", type=Path, default=Path("data/processed/processed_mc_rtt.npz"))
@@ -106,7 +141,19 @@ def main() -> int:
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--patience", type=int, default=12)
     p.add_argument("--n-boot", type=int, default=200)
-    p.add_argument("--skip-snn", action="store_true")
+    p.add_argument("--skip-snn", action="store_true", help="skip the trained (BPTT) SNN")
+    p.add_argument("--skip-ridge", action="store_true", help="skip the ridge baselines")
+    p.add_argument("--reservoir-snn", action="store_true",
+                   help="also fit the numpy reservoir SNN (random-proj LIF + lag-stacked ridge)")
+    p.add_argument("--reservoir-hidden-dim", type=int, default=1024)
+    p.add_argument("--reservoir-tau-ms", type=float, default=10.0)
+    p.add_argument("--reservoir-lag-bins", type=int, default=4,
+                   help="reservoir readout history depth (default 4 ≈ 200 ms, matched to ridge_lag4)")
+    p.add_argument("--reservoir-thresholds", type=float, nargs="+", default=[0.05, 0.20])
+    p.add_argument("--reservoir-alphas", type=float, nargs="+", default=[1e3, 1e4, 3e4, 1e5])
+    p.add_argument("--merge-into", type=Path, default=None,
+                   help="merge the computed rows into an existing block_cv.json (replacing rows "
+                        "for the same models) instead of writing a fresh file")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
 
@@ -150,24 +197,51 @@ def main() -> int:
             for seed in args.seeds:
                 set_global_seed(seed)
 
-                for lag in (0, 4):
-                    y_pred, alpha = _fit_ridge(spike_counts, y, train_idx, val_idx, test_idx, lag)
+                if not args.skip_ridge:
+                    for lag in (0, 4):
+                        y_pred, alpha = _fit_ridge(spike_counts, y, train_idx, val_idx, test_idx, lag)
+                        r2 = velocity_r2(y[test_idx], y_pred)
+                        r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
+                        model = "ridge" if lag == 0 else "ridge_lag4"
+                        rows.append({
+                            "model": model, "event_budget": float(f),
+                            "fold": int(fold["fold"]), "seed": int(seed),
+                            "train_size": int(train_idx.size),
+                            "test_size": int(test_idx.size),
+                            "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
+                            "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
+                            "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
+                            "best_alpha": alpha, "n_boot": int(args.n_boot),
+                        })
+                        logger.info("%-11s f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f]",
+                                    model, f, fold["fold"], seed, r2["r2_joint"],
+                                    r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
+
+                if args.reservoir_snn:
+                    y_pred, r_thr, r_alpha = _fit_reservoir_snn(
+                        et, en, y, train_idx, val_idx, test_idx,
+                        num_neurons=num_neurons, bin_size_ms=bin_size_ms,
+                        hidden_dim=args.reservoir_hidden_dim, tau_ms=args.reservoir_tau_ms,
+                        lag_bins=args.reservoir_lag_bins,
+                        thresholds=args.reservoir_thresholds, alphas=args.reservoir_alphas,
+                        seed=seed,
+                    )
                     r2 = velocity_r2(y[test_idx], y_pred)
                     r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
-                    model = "ridge" if lag == 0 else "ridge_lag4"
                     rows.append({
-                        "model": model, "event_budget": float(f),
+                        "model": "reservoir_snn", "event_budget": float(f),
                         "fold": int(fold["fold"]), "seed": int(seed),
                         "train_size": int(train_idx.size),
                         "test_size": int(test_idx.size),
                         "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
                         "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
                         "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
-                        "best_alpha": alpha, "n_boot": int(args.n_boot),
+                        "tuned_threshold": r_thr, "best_alpha": r_alpha,
+                        "lag_bins": int(args.reservoir_lag_bins), "n_boot": int(args.n_boot),
                     })
-                    logger.info("%-11s f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f]",
-                                model, f, fold["fold"], seed, r2["r2_joint"],
-                                r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
+                    logger.info("reservoir_snn f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f] thr=%g a=%g",
+                                f, fold["fold"], seed, r2["r2_joint"],
+                                r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"], r_thr, r_alpha)
 
                 if not args.skip_snn:
                     y_pred, val_r2 = _fit_snn(
@@ -198,6 +272,16 @@ def main() -> int:
                 (args.out_dir / "block_cv.json").write_text(json.dumps({"rows": rows}, indent=2))
 
     (args.out_dir / "block_cv.json").write_text(json.dumps({"rows": rows}, indent=2))
+
+    if args.merge_into is not None:
+        models_computed = {r["model"] for r in rows}
+        existing = json.loads(args.merge_into.read_text())["rows"] if args.merge_into.exists() else []
+        kept = [r for r in existing if r["model"] not in models_computed]
+        merged = kept + rows
+        args.merge_into.parent.mkdir(parents=True, exist_ok=True)
+        args.merge_into.write_text(json.dumps({"rows": merged}, indent=2))
+        logger.info("merged %d new rows (models=%s) into %s: kept %d existing -> %d total",
+                    len(rows), sorted(models_computed), args.merge_into, len(kept), len(merged))
 
     # Summary table + plot.
     by_model_fold: dict[tuple[str, int], list[float]] = {}
