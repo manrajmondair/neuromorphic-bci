@@ -23,6 +23,7 @@ import torch
 from torch import nn
 
 from src.models.trained_snn import (
+    TrainedLatencySNN,
     _SpikeFn,
     _sparse_events_to_subbin_counts,
     _stack_history,
@@ -43,6 +44,7 @@ class DeeperTrainedSNN:
         bin_size_ms: int = 50,
         num_sub_bins: int = 10,
         k_history: int = 4,
+        readout_lag: int = 0,
         recurrent: bool = False,
         lr: float = 1e-2,
         weight_decay: float = 1e-4,
@@ -60,6 +62,10 @@ class DeeperTrainedSNN:
         self.bin_size_ms = int(bin_size_ms)
         self.num_sub_bins = int(num_sub_bins)
         self.k_history = int(k_history)
+        # Output history: lag-stack the trained per-bin features before the
+        # readout (see TrainedLatencySNN.readout_lag). When >0 the encoder runs
+        # on single-bin inputs and the readout gets the deep context.
+        self.readout_lag = int(readout_lag)
         self.recurrent = bool(recurrent)
         self.lr = float(lr)
         self.weight_decay = float(weight_decay)
@@ -143,7 +149,8 @@ class DeeperTrainedSNN:
             self.bin_size_ms, self.num_sub_bins,
         )
         split_starts = (int(train_idx.min()), int(val_idx.min()))
-        x_all = _stack_history(x_all, self.k_history, split_starts)
+        k_hist_eff = 0 if self.readout_lag > 0 else self.k_history
+        x_all = _stack_history(x_all, k_hist_eff, split_starts)
 
         x_train = torch.from_numpy(x_all[train_idx]).to(device)
         x_val = torch.from_numpy(x_all[val_idx]).to(device)
@@ -175,8 +182,9 @@ class DeeperTrainedSNN:
         else:
             R_list_params = [None] * len(self.hidden_dims)
 
+        readout_dim = self.hidden_dims[-1] * (self.readout_lag + 1)
         W_out = nn.Parameter(
-            torch.randn(2, self.hidden_dims[-1], device=device) * (1.0 / np.sqrt(self.hidden_dims[-1]))
+            torch.randn(2, readout_dim, device=device) * (1.0 / np.sqrt(readout_dim))
         )
         b_out = nn.Parameter(torch.zeros(2, device=device))
         self._device = device
@@ -195,6 +203,8 @@ class DeeperTrainedSNN:
         for epoch in range(self.epochs):
             self._higher_state = []  # reset transient state for this fwd pass
             z = self._encode(x_train, W_list_params, R_list_params)
+            if self.readout_lag > 0:
+                z = TrainedLatencySNN._lag_stack_z(z, self.readout_lag)
             y_pred = z @ W_out.T + b_out
             loss = torch.mean((y_pred - y_train) ** 2)
             opt.zero_grad()
@@ -204,6 +214,8 @@ class DeeperTrainedSNN:
             with torch.no_grad():
                 self._higher_state = []
                 z_val = self._encode(x_val, W_list_params, R_list_params)
+                if self.readout_lag > 0:
+                    z_val = TrainedLatencySNN._lag_stack_z(z_val, self.readout_lag)
                 y_pred_val = z_val @ W_out.T + b_out
                 val_r2 = float(self._joint_r2(y_val, y_pred_val).item())
             self.history.append({"epoch": epoch, "train_mse": float(loss.item()), "val_r2": val_r2})
@@ -240,11 +252,14 @@ class DeeperTrainedSNN:
         )
         if split_starts is None:
             split_starts = (int(np.min(idx)),)
-        x_all = _stack_history(x_all, self.k_history, split_starts)
+        k_hist_eff = 0 if self.readout_lag > 0 else self.k_history
+        x_all = _stack_history(x_all, k_hist_eff, split_starts)
         device = getattr(self, "_device", self._params["W_out"].device)
         x = torch.from_numpy(x_all[idx]).to(device)
         self._higher_state = []
         with torch.no_grad():
             z = self._encode(x, self._params["W_list"], self._params["R_list"])
+            if self.readout_lag > 0:
+                z = TrainedLatencySNN._lag_stack_z(z, self.readout_lag)
             y_pred = z @ self._params["W_out"].T + self._params["b_out"]
         return y_pred.cpu().numpy()

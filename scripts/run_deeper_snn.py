@@ -44,6 +44,8 @@ def main() -> int:
     p.add_argument("--tau-ms", type=float, default=10.0)
     p.add_argument("--threshold", type=float, default=0.30)
     p.add_argument("--k-history", type=int, default=4)
+    p.add_argument("--readout-lag", type=int, default=0,
+                   help="lag-stack the trained per-bin features before the readout (deep context)")
     p.add_argument("--recurrent", action="store_true")
     p.add_argument("--lr", type=float, default=5e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
@@ -77,6 +79,7 @@ def main() -> int:
                 num_neurons=num_neurons, hidden_dims=tuple(args.hidden_dims),
                 tau_ms=args.tau_ms, threshold=args.threshold,
                 bin_size_ms=bin_size_ms, k_history=args.k_history,
+                readout_lag=args.readout_lag,
                 recurrent=args.recurrent,
                 lr=args.lr, weight_decay=args.weight_decay,
                 epochs=args.epochs, patience=args.patience, seed=seed,
