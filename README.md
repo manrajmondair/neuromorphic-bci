@@ -104,7 +104,7 @@ every decoder sees a consistent, sparsified stream.
 | **Ridge (counts)** | L2-regularized linear map from per-bin spike counts; α selected on validation. |
 | **Ridge + history** | Same, with the previous *k* bins (default *k* = 4 ≈ 200 ms) stacked as features, boundary-safe. |
 | **Trained SNN** | LIF hidden layer over 10 × 5 ms sub-bins, surrogate-gradient BPTT, linear velocity readout, optional *k*-bin history (CUDA). |
-| **Reservoir SNN** | Random-projection LIF replayed in spike-time order + ridge readout (latency-replay baseline). |
+| **Reservoir SNN** | Fixed (untrained) random-projection LIF encoder replayed in spike-time order; ridge readout over the current bin's hidden activity stacked with a boundary-safe multi-bin history window (optional leaky echo-state reservoir). α and history depth selected on validation. |
 
 **Controls.** Order-shuffle, phase-randomize, neuron-identity-shuffle, and
 circular-shift nulls, plus a permutation test (*n* = 1,000) at each budget.

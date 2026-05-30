@@ -38,7 +38,8 @@ logger = logging.getLogger("run_snn")
 
 EVENT_BUDGETS_DEFAULT = (1.00, 0.50, 0.25, 0.10)
 SEEDS_DEFAULT = (0, 1, 2)
-THRESHOLDS_DEFAULT = (0.05, 0.10, 0.20, 0.30, 0.50, 0.75, 1.00)
+THRESHOLDS_DEFAULT = (0.05, 0.10, 0.20)
+READOUT_ALPHAS_DEFAULT = (1e4, 3e4, 1e5)
 QUALITATIVE_BUDGET = 0.25
 QUALITATIVE_SEED = 0
 
@@ -52,7 +53,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--shuffle-json", type=Path, default=Path("results/controls/shuffle_results.json"))
     p.add_argument("--event-budgets", type=float, nargs="+", default=list(EVENT_BUDGETS_DEFAULT))
     p.add_argument("--seeds", type=int, nargs="+", default=list(SEEDS_DEFAULT))
-    p.add_argument("--hidden-dim", type=int, default=256)
+    p.add_argument("--hidden-dim", type=int, default=1024)
     p.add_argument("--tau-ms", type=float, default=10.0)
     p.add_argument(
         "--thresholds", type=float, nargs="+", default=list(THRESHOLDS_DEFAULT),
@@ -60,8 +61,17 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--fixed-threshold", type=float, default=None,
                    help="skip tuning, use this threshold everywhere")
-    p.add_argument("--readout-alpha", type=float, default=1.0)
-    p.add_argument("--n-restarts", type=int, default=3,
+    p.add_argument("--readout-alpha", type=float, default=1.0,
+                   help="fixed ridge alpha (used only if --readout-alphas is empty)")
+    p.add_argument("--readout-alphas", type=float, nargs="*", default=list(READOUT_ALPHAS_DEFAULT),
+                   help="ridge alpha grid selected on val (pass nothing to use fixed --readout-alpha)")
+    p.add_argument("--readout-lag-bins", type=int, default=20,
+                   help="history depth: readout sees current bin + previous k bins of hidden features")
+    p.add_argument("--recurrent", action="store_true",
+                   help="run per-bin features through a fixed leaky echo-state reservoir before readout")
+    p.add_argument("--spectral-radius", type=float, default=0.9)
+    p.add_argument("--reservoir-leak", type=float, default=0.3)
+    p.add_argument("--n-restarts", type=int, default=2,
                    help="independent W init restarts per (seed, budget); best val R^2 wins")
     p.add_argument("--no-standardize", action="store_true",
                    help="skip per-hidden-unit z-scoring before the readout")
@@ -100,6 +110,24 @@ def main() -> int:
         num_bins, num_neurons, train_idx.size, val_idx.size, test_idx.size,
     )
 
+    # Split-boundary starts so lag / reservoir features never cross splits.
+    split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
+    readout_alphas = tuple(args.readout_alphas) if args.readout_alphas else None
+    # Shared temporal-memory config for the encoder + readout.
+    snn_kwargs = dict(
+        readout_alphas=readout_alphas,
+        readout_lag_bins=args.readout_lag_bins,
+        recurrent=args.recurrent,
+        spectral_radius=args.spectral_radius,
+        reservoir_leak=args.reservoir_leak,
+        split_starts=split_starts,
+    )
+    logger.info(
+        "config: hidden=%d tau=%g lag_bins=%d recurrent=%s alphas=%s restarts=%d",
+        args.hidden_dim, args.tau_ms, args.readout_lag_bins, args.recurrent,
+        readout_alphas, args.n_restarts,
+    )
+
     for csv_path in (args.snn_csv, args.shuffle_csv):
         if csv_path.exists():
             csv_path.unlink()
@@ -130,6 +158,7 @@ def main() -> int:
                     tau_ms=args.tau_ms,
                     readout_alpha=args.readout_alpha,
                     n_restarts=1, standardize=not args.no_standardize, seed=seed,
+                    **snn_kwargs,
                 )
                 logger.info("threshold sweep at f=%.2f: %s -> best=%g", f, sweep, best_thr)
             else:
@@ -147,15 +176,16 @@ def main() -> int:
                 n_restarts=args.n_restarts,
                 standardize=not args.no_standardize,
                 seed=seed,
+                **snn_kwargs,
             ).fit(et, en, y, train_idx, val_idx)
             y_pred = snn.predict(et, en, test_idx)
             r2 = velocity_r2(y[test_idx], y_pred)
             r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
             logger.info(
-                "snn result: f=%.2f seed=%d  r2_joint=%+.4f [%.4f, %.4f]  thr=%g restarts_val=%s",
+                "snn result: f=%.2f seed=%d  r2_joint=%+.4f [%.4f, %.4f]  thr=%g alpha=%s restarts_val=%s",
                 f, seed, r2["r2_joint"],
                 r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"],
-                best_thr, [round(s, 4) for s in snn.restart_val_r2s],
+                best_thr, snn.chosen_alpha, [round(s, 4) for s in snn.restart_val_r2s],
             )
             snn_rows.append({
                 "model": "snn",
@@ -191,6 +221,7 @@ def main() -> int:
                 n_restarts=args.n_restarts,
                 standardize=not args.no_standardize,
                 seed=seed,
+                **snn_kwargs,
             ).fit(et_s, en_s, y, train_idx, val_idx)
             y_pred_s = snn_s.predict(et_s, en_s, test_idx)
             r2_s = velocity_r2(y[test_idx], y_pred_s)
@@ -229,6 +260,11 @@ def main() -> int:
         "thresholds_swept": list(args.thresholds) if args.fixed_threshold is None else None,
         "fixed_threshold": (None if args.fixed_threshold is None else float(args.fixed_threshold)),
         "readout_alpha": float(args.readout_alpha),
+        "readout_alphas": list(readout_alphas) if readout_alphas is not None else None,
+        "readout_lag_bins": int(args.readout_lag_bins),
+        "recurrent": bool(args.recurrent),
+        "spectral_radius": float(args.spectral_radius),
+        "reservoir_leak": float(args.reservoir_leak),
         "n_restarts": int(args.n_restarts),
         "standardize": not args.no_standardize,
         "event_budgets": list(args.event_budgets),
