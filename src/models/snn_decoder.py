@@ -128,6 +128,7 @@ class SparseLatencySNN:
         *,
         readout_alphas: Sequence[float] | None = None,
         readout_lag_bins: int = 0,
+        readout_lag_candidates: Sequence[int] | None = None,
         recurrent: bool = False,
         spectral_radius: float = 0.9,
         reservoir_leak: float = 0.3,
@@ -156,6 +157,13 @@ class SparseLatencySNN:
         self.n_restarts = int(n_restarts)
         self.standardize = bool(standardize)
         self.readout_lag_bins = int(readout_lag_bins)
+        # Candidate history depths to select on val (defaults to the single
+        # fixed readout_lag_bins). The encoder is run once per restart, so
+        # sweeping depth here only adds cheap ridge fits on shifted features.
+        self.readout_lag_candidates = (
+            tuple(int(k) for k in readout_lag_candidates)
+            if readout_lag_candidates else (int(readout_lag_bins),)
+        )
         self.recurrent = bool(recurrent)
         self.spectral_radius = float(spectral_radius)
         self.reservoir_leak = float(reservoir_leak)
@@ -171,6 +179,7 @@ class SparseLatencySNN:
         self.sigma_rec: np.ndarray | None = None
         self.best_restart_seed: int | None = None
         self.chosen_alpha: float | None = None
+        self.chosen_lag: int | None = None
         self.restart_val_r2s: list[float] = []
 
     @staticmethod
@@ -241,24 +250,28 @@ class SparseLatencySNN:
             X[t] = x
         return X
 
-    def _select_readout(self, F, velocity, train_idx, val_idx):
-        """Fit the ridge readout, selecting alpha on val when a grid is given.
+    def _select_lag_alpha(self, Xz, velocity, train_idx, val_idx):
+        """Select (history depth, ridge alpha) on val from standardized features.
 
-        Returns ``(readout, score, chosen_alpha)`` where ``score`` is the joint
-        R² on val (or train if no val). Plain ridge per alpha keeps this fast
-        even at the wide lag-stacked feature dimension.
+        Returns ``(readout, score, chosen_alpha, chosen_lag)``. The encoder /
+        reservoir is already done; here we only restack `Xz` at each candidate
+        depth and fit plain ridge per alpha, so the whole sweep is cheap even at
+        wide lag-stacked dimensions.
         """
         from src.evaluation.metrics import velocity_r2
 
         has_val = val_idx is not None and val_idx.size > 0
+        ref_idx = val_idx if has_val else train_idx
         alphas = self.readout_alphas if self.readout_alphas is not None else (self.readout_alpha,)
+        Xz = Xz.astype(np.float32, copy=False)
         best = None
-        for a in alphas:
-            ro = LinearReadout(alpha=float(a)).fit(F[train_idx], velocity[train_idx])
-            ref_idx = val_idx if has_val else train_idx
-            s = velocity_r2(velocity[ref_idx], ro.predict(F[ref_idx]))["r2_joint"]
-            if best is None or s > best[1]:
-                best = (ro, float(s), float(a))
+        for lag in self.readout_lag_candidates:
+            F = stack_lag_features(Xz, lag, self.split_starts)
+            for a in alphas:
+                ro = LinearReadout(alpha=float(a)).fit(F[train_idx], velocity[train_idx])
+                s = velocity_r2(velocity[ref_idx], ro.predict(F[ref_idx]))["r2_joint"]
+                if best is None or s > best[1]:
+                    best = (ro, float(s), float(a), int(lag))
         return best
 
     def _features(self, S: np.ndarray) -> np.ndarray:
@@ -275,8 +288,9 @@ class SparseLatencySNN:
                 X = (X - self.mu_rec) / self.sigma_rec
         else:
             X = S
+        lag = self.chosen_lag if self.chosen_lag is not None else self.readout_lag_bins
         return stack_lag_features(
-            X.astype(np.float32, copy=False), self.readout_lag_bins, self.split_starts
+            X.astype(np.float32, copy=False), lag, self.split_starts
         )
 
     def fit(
@@ -320,10 +334,8 @@ class SparseLatencySNN:
                 W_rec = mu_rec = sigma_rec = None
                 Xz = Sz
 
-            F = stack_lag_features(
-                Xz.astype(np.float32, copy=False), self.readout_lag_bins, self.split_starts
-            )
-            readout, score, chosen_alpha = self._select_readout(F, velocity, train_idx, val_idx)
+            readout, score, chosen_alpha, chosen_lag = self._select_lag_alpha(
+                Xz, velocity, train_idx, val_idx)
             self.restart_val_r2s.append(float(score))
 
             if score > best_score:
@@ -331,7 +343,7 @@ class SparseLatencySNN:
                 best = {
                     "W": W_k, "W_rec": W_rec, "readout": readout,
                     "mu": mu, "sigma": sigma, "mu_rec": mu_rec, "sigma_rec": sigma_rec,
-                    "seed": seed_k, "alpha": chosen_alpha,
+                    "seed": seed_k, "alpha": chosen_alpha, "lag": chosen_lag,
                 }
 
         assert best is not None
@@ -342,6 +354,7 @@ class SparseLatencySNN:
         self.mu_rec, self.sigma_rec = best["mu_rec"], best["sigma_rec"]
         self.best_restart_seed = best["seed"]
         self.chosen_alpha = best["alpha"]
+        self.chosen_lag = best["lag"]
         return self
 
     def predict(
@@ -377,6 +390,7 @@ def tune_threshold_on_val(
     *,
     readout_alphas: Sequence[float] | None = None,
     readout_lag_bins: int = 0,
+    readout_lag_candidates: Sequence[int] | None = None,
     recurrent: bool = False,
     spectral_radius: float = 0.9,
     reservoir_leak: float = 0.3,
@@ -401,6 +415,7 @@ def tune_threshold_on_val(
             seed=seed,
             readout_alphas=readout_alphas,
             readout_lag_bins=readout_lag_bins,
+            readout_lag_candidates=readout_lag_candidates,
             recurrent=recurrent,
             spectral_radius=spectral_radius,
             reservoir_leak=reservoir_leak,

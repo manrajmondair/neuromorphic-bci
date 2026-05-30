@@ -65,8 +65,10 @@ def parse_args() -> argparse.Namespace:
                    help="fixed ridge alpha (used only if --readout-alphas is empty)")
     p.add_argument("--readout-alphas", type=float, nargs="*", default=list(READOUT_ALPHAS_DEFAULT),
                    help="ridge alpha grid selected on val (pass nothing to use fixed --readout-alpha)")
-    p.add_argument("--readout-lag-bins", type=int, default=20,
-                   help="history depth: readout sees current bin + previous k bins of hidden features")
+    p.add_argument("--readout-lag-bins", type=int, default=24,
+                   help="history depth (used if --readout-lag-candidates is empty)")
+    p.add_argument("--readout-lag-candidates", type=int, nargs="*", default=[16, 20, 24, 28],
+                   help="history depths selected per-budget on val (empty = fixed --readout-lag-bins)")
     p.add_argument("--recurrent", action="store_true",
                    help="run per-bin features through a fixed leaky echo-state reservoir before readout")
     p.add_argument("--spectral-radius", type=float, default=0.9)
@@ -114,9 +116,11 @@ def main() -> int:
     split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
     readout_alphas = tuple(args.readout_alphas) if args.readout_alphas else None
     # Shared temporal-memory config for the encoder + readout.
+    readout_lag_candidates = tuple(args.readout_lag_candidates) if args.readout_lag_candidates else None
     snn_kwargs = dict(
         readout_alphas=readout_alphas,
         readout_lag_bins=args.readout_lag_bins,
+        readout_lag_candidates=readout_lag_candidates,
         recurrent=args.recurrent,
         spectral_radius=args.spectral_radius,
         reservoir_leak=args.reservoir_leak,
@@ -182,10 +186,10 @@ def main() -> int:
             r2 = velocity_r2(y[test_idx], y_pred)
             r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
             logger.info(
-                "snn result: f=%.2f seed=%d  r2_joint=%+.4f [%.4f, %.4f]  thr=%g alpha=%s restarts_val=%s",
+                "snn result: f=%.2f seed=%d  r2_joint=%+.4f [%.4f, %.4f]  thr=%g lag=%s alpha=%s restarts_val=%s",
                 f, seed, r2["r2_joint"],
                 r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"],
-                best_thr, snn.chosen_alpha, [round(s, 4) for s in snn.restart_val_r2s],
+                best_thr, snn.chosen_lag, snn.chosen_alpha, [round(s, 4) for s in snn.restart_val_r2s],
             )
             snn_rows.append({
                 "model": "snn",
@@ -262,6 +266,7 @@ def main() -> int:
         "readout_alpha": float(args.readout_alpha),
         "readout_alphas": list(readout_alphas) if readout_alphas is not None else None,
         "readout_lag_bins": int(args.readout_lag_bins),
+        "readout_lag_candidates": list(readout_lag_candidates) if readout_lag_candidates else None,
         "recurrent": bool(args.recurrent),
         "spectral_radius": float(args.spectral_radius),
         "reservoir_leak": float(args.reservoir_leak),

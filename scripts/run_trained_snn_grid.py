@@ -61,7 +61,9 @@ def main() -> int:
     p.add_argument("--taus", type=float, nargs="+", default=[20.0, 40.0])
     p.add_argument("--hidden-dims", type=int, nargs="+", default=[256, 512])
     p.add_argument("--threshold", type=float, default=0.30)
-    p.add_argument("--num-sub-bins", type=int, default=10)
+    p.add_argument("--num-sub-bins-list", type=int, nargs="+", default=[10],
+                   help="sub-bin resolutions to grid; fewer sub-bins shorten the BPTT "
+                        "sequence so deeper k_history stays trainable")
     p.add_argument("--stage1-seeds", type=int, nargs="+", default=[0, 1])
     p.add_argument("--stage2-seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--stage2-budgets", type=float, nargs="+", default=[1.0, 0.5, 0.25, 0.1])
@@ -82,28 +84,30 @@ def main() -> int:
     logger.info("STAGE 1: grid k=%s x tau=%s x hidden=%s at f=1.0, seeds=%s",
                 args.k_histories, args.taus, args.hidden_dims, args.stage1_seeds)
     logger.info("=" * 72)
-    for k_hist, tau, hid in product(args.k_histories, args.taus, args.hidden_dims):
+    for k_hist, tau, hid, nsb in product(args.k_histories, args.taus, args.hidden_dims,
+                                         args.num_sub_bins_list):
         for seed in args.stage1_seeds:
             r2, r2_boot, val_r2 = fit_one(
                 data, 1.0, seed, hid, tau, args.threshold, k_hist,
-                args.num_sub_bins, args.epochs, args.patience, args.n_boot)
+                nsb, args.epochs, args.patience, args.n_boot)
             grid_rows.append({
-                "k_history": k_hist, "tau_ms": tau, "hidden_dim": hid, "seed": seed,
-                "r2_joint": r2["r2_joint"], "val_r2": val_r2,
+                "k_history": k_hist, "tau_ms": tau, "hidden_dim": hid, "num_sub_bins": nsb,
+                "seed": seed, "r2_joint": r2["r2_joint"], "val_r2": val_r2,
                 "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"], "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
             })
-            combo_val.setdefault((k_hist, tau, hid), []).append(val_r2)
-            logger.info("grid k=%d tau=%g hidden=%d seed=%d  test=%+.4f val=%+.4f",
-                        k_hist, tau, hid, seed, r2["r2_joint"], val_r2)
+            combo_val.setdefault((k_hist, tau, hid, nsb), []).append(val_r2)
+            logger.info("grid k=%d tau=%g hidden=%d nsb=%d seed=%d  test=%+.4f val=%+.4f",
+                        k_hist, tau, hid, nsb, seed, r2["r2_joint"], val_r2)
             with (args.out_dir / "grid.csv").open("w", newline="") as fh:
                 w = csv.DictWriter(fh, fieldnames=list(grid_rows[0].keys())); w.writeheader(); w.writerows(grid_rows)
 
     best_combo = max(combo_val, key=lambda c: float(np.mean(combo_val[c])))
     best = {"k_history": best_combo[0], "tau_ms": best_combo[1], "hidden_dim": best_combo[2],
-            "mean_val_r2": float(np.mean(combo_val[best_combo]))}
+            "num_sub_bins": best_combo[3], "mean_val_r2": float(np.mean(combo_val[best_combo]))}
     (args.out_dir / "best.json").write_text(json.dumps(best, indent=2))
-    logger.info("STAGE 1 best: k=%d tau=%g hidden=%d (mean val R2=%.4f)",
-                best["k_history"], best["tau_ms"], best["hidden_dim"], best["mean_val_r2"])
+    logger.info("STAGE 1 best: k=%d tau=%g hidden=%d nsb=%d (mean val R2=%.4f)",
+                best["k_history"], best["tau_ms"], best["hidden_dim"], best["num_sub_bins"],
+                best["mean_val_r2"])
 
     # ---- Stage 2: best combo across all budgets, more seeds ----
     logger.info("=" * 72)
@@ -114,13 +118,14 @@ def main() -> int:
         for seed in args.stage2_seeds:
             r2, r2_boot, val_r2 = fit_one(
                 data, f, seed, best["hidden_dim"], best["tau_ms"], args.threshold,
-                best["k_history"], args.num_sub_bins, args.epochs, args.patience, args.n_boot)
+                best["k_history"], best["num_sub_bins"], args.epochs, args.patience, args.n_boot)
             final_rows.append({
                 "model": "trained_snn_deep", "event_budget": float(f), "seed": int(seed),
                 "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
                 "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"], "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
                 "best_val_r2": val_r2, "k_history": best["k_history"], "tau_ms": best["tau_ms"],
-                "hidden_dim": best["hidden_dim"], "n_boot": int(args.n_boot),
+                "hidden_dim": best["hidden_dim"], "num_sub_bins": best["num_sub_bins"],
+                "n_boot": int(args.n_boot),
             })
             logger.info("final f=%.2f seed=%d  test=%+.4f [%.4f, %.4f]",
                         f, seed, r2["r2_joint"], r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"])
