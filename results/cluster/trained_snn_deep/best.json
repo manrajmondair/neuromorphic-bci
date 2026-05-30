@@ -1,0 +1,8 @@
+{
+  "k_history": 0,
+  "tau_ms": 10.0,
+  "hidden_dim": 512,
+  "num_sub_bins": 10,
+  "readout_lag": 28,
+  "mean_val_r2": 0.62090003490448
+}

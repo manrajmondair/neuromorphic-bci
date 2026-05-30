@@ -28,10 +28,13 @@ of spike-count history triples it to R² ≈ 0.5–0.54. A trained LIF SNN
 within confidence intervals) but does not exceed it. A battery of null
 controls shows the decode is driven by per-bin firing rate and its temporal
 alignment to movement — shuffling within-bin spike order, jittering precise
-times, or permuting neuron identity barely changes R². The SNN's advantage
-is therefore **energy, not accuracy**: its sparse, event-driven synaptic
-operations map to tens of nanojoules per prediction on Loihi-2-class
-neuromorphic hardware, orders of magnitude below a dense GPU/CPU readout.
+times, or permuting neuron identity barely changes R². At a matched history
+window the SNN ties the linear decoders, so its edge there is **energy**;
+given a deeper lag-stacked readout it also becomes the **most accurate**
+decoder at every budget (R² = 0.68 at *f* = 1.0 — see Results). Either way its
+sparse, event-driven synaptic operations map to tens of nanojoules per
+prediction on Loihi-2-class neuromorphic hardware, orders of magnitude below a
+dense GPU/CPU readout.
 
 <p align="center">
   <img src="results/cluster/figures/headline_frontier_multiseed.png" width="640"
@@ -103,7 +106,7 @@ every decoder sees a consistent, sparsified stream.
 |---|---|
 | **Ridge (counts)** | L2-regularized linear map from per-bin spike counts; α selected on validation. |
 | **Ridge + history** | Same, with the previous *k* bins (default *k* = 4 ≈ 200 ms) stacked as features, boundary-safe. |
-| **Trained SNN** | LIF hidden layer over 10 × 5 ms sub-bins, surrogate-gradient BPTT, linear velocity readout, optional *k*-bin history (CUDA). |
+| **Trained SNN** | LIF hidden layer over 10 × 5 ms sub-bins, surrogate-gradient BPTT, linear velocity readout (CUDA). History reaches the readout by lag-stacking the trained per-bin hidden features (`readout_lag`); piling history onto the *input* instead saturates the single LIF state past ≈ 8 bins, so the readout route is what lets it use deep context. Depth selected on validation. |
 | **Reservoir SNN** | Fixed (untrained) random-projection LIF encoder replayed in spike-time order; ridge readout over the current bin's hidden activity stacked with a boundary-safe multi-bin history window (optional leaky echo-state reservoir). α and history depth selected on validation. |
 
 **Controls.** Order-shuffle, phase-randomize, neuron-identity-shuffle, and
@@ -132,6 +135,40 @@ sensitivity, Pareto, bin-size, channel-dropout — in
 
 Permutation test: decode is significant at *f* ≥ 0.25 (*p* ≈ 0.001 at *f* =
 1.0 and 0.5, *p* ≈ 0.04 at 0.25) and not significant at *f* = 0.10.
+
+### Best configuration of every decoder
+
+The table above matches all decoders at a 4-bin (≈ 200 ms) history window for a
+fair head-to-head. Selecting each decoder's history depth on validation instead
+— giving every history-capable model up to ≈ 1.4 s of context — shows that
+temporal context is the dominant lever, and that the spiking decoders lead once
+they can use it:
+
+| Decoder (best config) | *f* = 1.00 | *f* = 0.50 | *f* = 0.25 | *f* = 0.10 |
+|---|---|---|---|---|
+| Ridge (single-bin counts) | 0.166 | 0.096 | 0.049 | 0.021 |
+| First-spike latency | 0.131 | 0.092 | 0.051 | 0.023 |
+| Ridge + deep history (*k* = 24) | 0.627 | 0.484 | 0.305 | 0.176 |
+| **Reservoir SNN** (fixed random LIF + lag-stacked ridge) | 0.638 | 0.488 | 0.339 | 0.177 |
+| **Trained SNN** (LIF + lag-stacked readout) | **0.677** | **0.554** | **0.347** | **0.210** |
+
+Mean test R² over 3 seeds; history depth selected on validation (per budget for
+the SNNs). Two takeaways: (1) the memoryless baselines (counts, latency) sit at
+their ceilings, but every decoder given ≈ 1 s of context reaches R² ≈ 0.6 at
+full budget — temporal context, not decoder class, carries the decode; (2) the
+neuromorphic SNNs are the **best** decoders, not only the most efficient — a
+trained LIF SNN whose readout sees a lag-stacked window of its per-bin hidden
+activity tops every event budget, with the fixed-encoder reservoir SNN just
+behind. Full per-model results + figure in [`results/best/`](results/best/).
+
+<p align="center">
+  <img src="results/best/best_frontier.png" width="640"
+       alt="Best configuration of every decoder vs sparse event budget."><br>
+  <em>Each decoder at its own validation-selected optimum. With ≈ 1 s of temporal
+  context the linear, reservoir-SNN, and trained-SNN decoders converge near
+  R² ≈ 0.6–0.68 at full budget; the trained LIF SNN with a lag-stacked readout
+  leads at every budget.</em>
+</p>
 
 ## Repository layout
 

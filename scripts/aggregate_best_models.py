@@ -28,7 +28,7 @@ BUDGETS = [1.0, 0.5, 0.25, 0.1]
 SOURCES = [
     ("Ridge (counts)",          "json", "results/ridge/ridge_results.json",                "#1f77b4", "o"),
     ("Latency (first-spike)",   "json", "results/latency/latency_results.json",            "#8c564b", "v"),
-    ("Ridge + deep history",    "json", "results/ridge/ridge_lag20_results.json",           "#2ca02c", "^"),
+    ("Ridge + deep history",    "json", "results/ridge/ridge_lag24_results.json",           "#2ca02c", "^"),
     ("Reservoir SNN",           "json", "results/snn/snn_results.json",                     "#9467bd", "s"),
     ("Trained SNN (deep)",      "csv",  "results/cluster/trained_snn_deep/results.csv",     "#ff7f0e", "P"),
     ("Deeper SNN (recurrent)",  "csv",  "results/cluster/deeper_snn_deep/results.csv",      "#d62728", "D"),

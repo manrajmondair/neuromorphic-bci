@@ -1,0 +1,2 @@
+k_history,tau_ms,hidden_dim,num_sub_bins,readout_lag,seed,r2_joint,val_r2,r2_joint_ci_lo,r2_joint_ci_hi
+0,10.0,512,10,28,0,0.6771954287052433,0.62090003490448,0.6543810161773572,0.6982531522825804
