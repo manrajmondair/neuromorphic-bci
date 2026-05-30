@@ -16,32 +16,34 @@ decoder while exposing a path to low-energy implantable hardware.
 ## Abstract
 
 We decode continuous 2D cursor velocity from primary motor-cortex spiking
-activity (Neural Latents Benchmark **MC_RTT**) and ask two questions: how
-the decode degrades as we retain only the earliest fraction *f* of spike
-events in each time bin, and whether a backprop-trained leaky
-integrate-and-fire (LIF) SNN matches a strong linear baseline at each
-budget. Across a multi-seed, blocked cross-validation grid on H100 GPUs we
-find that **temporal context, not fine within-bin spike timing, carries the
-signal**: a memoryless decoder reaches only R² ≈ 0.17, while adding ≈ 200 ms
-of spike-count history triples it to R² ≈ 0.5–0.54. A trained LIF SNN
-*matches* the lag-augmented linear decoder (R² = 0.54 vs 0.51 at *f* = 1.0,
-within confidence intervals) but does not exceed it. A battery of null
+activity (Neural Latents Benchmark **MC_RTT**) and ask how the decode degrades
+as we retain only the earliest fraction *f* of spike events in each time bin,
+and how event-driven spiking decoders compare to strong linear baselines.
+Across a multi-seed, blocked cross-validation grid we find that **temporal
+context, not fine within-bin spike timing, carries the signal**: a memoryless
+decoder reaches only R² ≈ 0.17, while ≈ 200 ms of history triples it to
+R² ≈ 0.5–0.54 — and at that matched window the linear, reservoir-SNN, and
+trained-SNN decoders are statistically indistinguishable. A battery of null
 controls shows the decode is driven by per-bin firing rate and its temporal
-alignment to movement — shuffling within-bin spike order, jittering precise
-times, or permuting neuron identity barely changes R². At a matched history
-window the SNN ties the linear decoders, so its edge there is **energy**;
-given a deeper lag-stacked readout it also becomes the **most accurate**
-decoder at every budget (R² = 0.68 at *f* = 1.0 — see Results). Either way its
-sparse, event-driven synaptic operations map to tens of nanojoules per
-prediction on Loihi-2-class neuromorphic hardware, orders of magnitude below a
-dense GPU/CPU readout.
+alignment to movement, not within-bin spike order, precise timing, or neuron
+identity. Given each decoder its own deeper context window, the spiking
+decoders pull ahead: a trained LIF SNN whose readout sees a lag-stacked window
+of its hidden activity reaches **R² = 0.68 at *f* = 1.0 — the most accurate
+decoder at every budget** — with a fixed random-projection reservoir SNN
+(R² = 0.64) just behind. The SNNs therefore lead on **both accuracy and
+energy**: their sparse, event-driven synaptic operations map to tens of
+nanojoules per prediction on Loihi-2-class neuromorphic hardware, orders of
+magnitude below a dense GPU/CPU readout.
 
 <p align="center">
   <img src="results/cluster/figures/headline_frontier_multiseed.png" width="640"
-       alt="Velocity R² versus sparse event budget for the three decoders."><br>
-  <em>Decoder accuracy vs. event budget (mean ± std across blocked CV folds and seeds, H100 grid).
-  The trained SNN tracks the lag-augmented ridge baseline at every budget; both far exceed the
-  memoryless count decoder.</em>
+       alt="Velocity R² versus sparse event budget for every decoder at a matched history window."><br>
+  <em>Decoder accuracy vs. event budget at a matched ≈ 200 ms history window
+  (mean ± std across blocked-CV folds and seeds). The history-using decoders —
+  lag-augmented ridge, trained SNN, reservoir SNN, deeper SNN — track together at
+  every budget, all far above the memoryless count decoder. Each decoder's own
+  deeper-context optimum, where the SNNs pull ahead, is in
+  <a href="#best-configuration-of-every-decoder">Best configuration</a>.</em>
 </p>
 
 ## Key findings
@@ -49,24 +51,31 @@ dense GPU/CPU readout.
 1. **Temporal context dominates.** A memoryless count decoder reaches
    R² ≈ 0.17 at full budget; stacking ≈ 4 bins (200 ms) of history triples
    it to R² ≈ 0.5–0.54 for both the linear and spiking decoders.
-2. **The trained SNN matches, but does not beat, a strong linear decoder.**
-   R² = 0.54 (SNN) vs 0.51 (ridge + history) at *f* = 1.0, overlapping CIs.
+2. **At equal context the decoders tie; with its own deep context the SNN
+   leads.** At a matched 200 ms window the trained SNN, reservoir SNN, and
+   ridge + history are statistically indistinguishable (R² ≈ 0.51–0.54,
+   overlapping CIs). Given a deeper lag-stacked readout the trained LIF SNN
+   reaches R² = 0.68 at *f* = 1.0 — the best decoder at every budget — with the
+   fixed-encoder reservoir SNN (0.64) just behind.
 3. **Rate and alignment carry the decode — not within-bin latency order.**
    Only destroying the bin-to-velocity alignment (circular shift) collapses
    R²; shuffling within-bin order, randomizing precise times, or permuting
    neuron identity leaves it essentially unchanged.
-4. **Sparsifying the spike stream costs accuracy monotonically.** Below
-   ≈ 25 % of events the decode falls to chance (permutation test not
-   significant at *f* = 0.10).
+4. **Sparsifying the spike stream costs accuracy monotonically.** Accuracy
+   falls smoothly as events are dropped; for a *memoryless* decoder it reaches
+   chance below ≈ 25 % of events (permutation test n.s. at *f* = 0.10). Deep
+   temporal context buys margin even there — the best decoders still hold
+   R² ≈ 0.18–0.21 at *f* = 0.10.
 5. **The neuromorphic payoff is energy.** An event-driven readout avoids the
    bulk of dense multiply-accumulates; at the headline configuration the
    SNN uses ≈ 2,000 synaptic operations per prediction (~46 nJ/prediction on
    Loihi 2 at 23 pJ/synop), against far higher dense GPU/CPU cost.
 
-For context, our R² ≈ 0.51–0.54 sits with the strong linear / GPFA / SLDS
-baselines on the NLB MC_RTT leaderboard (0.49–0.58); the Transformer (NDT,
-0.62) and latent-dynamics (AutoLFADS 0.67, MINT 0.69) families occupy the
-top — see [`results/benchmark/nlb_mc_rtt_published.json`](results/benchmark/nlb_mc_rtt_published.json).
+For context, our matched-window R² ≈ 0.51–0.54 sits with the strong linear /
+GPFA / SLDS baselines on the NLB MC_RTT leaderboard (0.49–0.58), while our best
+deep-context decoder (trained SNN, R² = 0.68 at *f* = 1.0) reaches the
+latent-dynamics tier that tops the benchmark (Transformer NDT 0.62, AutoLFADS
+0.67, MINT 0.69) — see [`results/benchmark/nlb_mc_rtt_published.json`](results/benchmark/nlb_mc_rtt_published.json).
 
 ## Background and research question
 
@@ -105,12 +114,17 @@ every decoder sees a consistent, sparsified stream.
 | Decoder | Description |
 |---|---|
 | **Ridge (counts)** | L2-regularized linear map from per-bin spike counts; α selected on validation. |
-| **Ridge + history** | Same, with the previous *k* bins (default *k* = 4 ≈ 200 ms) stacked as features, boundary-safe. |
+| **Ridge + history** | Same, with the previous *k* bins stacked as features (boundary-safe); *k* selected on validation. |
+| **Latency** | First-spike-time per neuron + ridge readout; isolates the within-bin latency signal (control). |
 | **Trained SNN** | LIF hidden layer over 10 × 5 ms sub-bins, surrogate-gradient BPTT, linear velocity readout (CUDA). History reaches the readout by lag-stacking the trained per-bin hidden features (`readout_lag`); piling history onto the *input* instead saturates the single LIF state past ≈ 8 bins, so the readout route is what lets it use deep context. Depth selected on validation. |
 | **Reservoir SNN** | Fixed (untrained) random-projection LIF encoder replayed in spike-time order; ridge readout over the current bin's hidden activity stacked with a boundary-safe multi-bin history window (optional leaky echo-state reservoir). α and history depth selected on validation. |
+| **Deeper SNN** | Multi-layer (optionally recurrent) LIF + lag-stacked readout — a capacity probe. Neither depth nor recurrence beats the single-layer trained SNN, so capacity is not the bottleneck. |
 
 **Controls.** Order-shuffle, phase-randomize, neuron-identity-shuffle, and
 circular-shift nulls, plus a permutation test (*n* = 1,000) at each budget.
+These within-bin / alignment controls are run on the **per-bin reservoir
+encoder** (memoryless readout) to isolate within-bin structure; the
+deep-context decoders in the results tables layer cross-bin history on top.
 
 **Efficiency model.** Dense MACs (`2·N·T`) versus event-driven synaptic
 operations (`2·E + 2·T`), converted to energy with published per-operation
@@ -157,6 +171,7 @@ they can use it:
 |---|---|---|---|---|
 | Ridge (single-bin counts) | 0.166 | 0.096 | 0.049 | 0.021 |
 | First-spike latency | 0.131 | 0.092 | 0.051 | 0.023 |
+| Deeper SNN (2-layer LIF) | 0.621 | 0.500 | 0.305 | 0.173 |
 | Ridge + deep history (*k* = 24) | 0.627 | 0.484 | 0.305 | 0.176 |
 | **Reservoir SNN** (fixed random LIF + lag-stacked ridge) | 0.638 | 0.488 | 0.339 | 0.177 |
 | **Trained SNN** (LIF + lag-stacked readout) | **0.677** | **0.554** | **0.347** | **0.210** |
@@ -187,7 +202,7 @@ per-model results + figure in [`results/best/`](results/best/).
 ```
 src/data/         NLB MC_RTT loading, binning, velocity, train/val/test split
 src/features/     spike-count, lag-history, latency, event-budget, jitter, causal-window
-src/models/       ridge, trained LIF SNN (BPTT), reservoir SNN, readouts
+src/models/       ridge, latency, trained LIF SNN (BPTT), reservoir SNN, deeper SNN, readouts
 src/controls/     order-shuffle and the multi-null battery
 src/evaluation/   R² metric, efficiency/energy model, experiment runner, plots
 src/utils/        seeding and a mock-data generator (schema-identical to real)
@@ -211,10 +226,11 @@ python scripts/download_mc_rtt.py          # -> data/raw/000129/*.nwb
 python scripts/preprocess_mc_rtt.py        # -> data/processed/processed_mc_rtt.npz
 
 python scripts/run_ridge.py                                  # count baseline
-python scripts/run_ridge.py --lag-bins 4 \
-    --results-json results/ridge/ridge_lag4_results.json     # strong linear baseline
-python scripts/run_trained_snn.py                            # trained LIF SNN (BPTT)
-python scripts/run_snn.py                                    # reservoir SNN + shuffle control
+python scripts/run_ridge.py --lag-bins 24 \
+    --results-json results/ridge/ridge_lag24_results.json    # deep-history linear baseline
+python scripts/run_snn.py                                    # reservoir SNN (per-budget lag) + shuffle control
+python scripts/run_trained_snn_grid.py                       # trained SNN readout-lag sweep (best decoder)
+python scripts/aggregate_best_models.py                      # unified best-of-every-model table + figure
 python scripts/run_efficiency_analysis.py                    # MAC / energy accounting
 python scripts/generate_final_figures.py                     # figures at dpi=300
 ```

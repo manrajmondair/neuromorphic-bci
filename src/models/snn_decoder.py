@@ -95,6 +95,10 @@ class SparseLatencySNN:
         History depth: the readout sees the current bin's hidden features
         stacked with the previous `readout_lag_bins` bins. 0 reproduces
         the memoryless per-bin readout.
+    readout_lag_candidates : sequence of int or None
+        If given, the history depth is selected from these candidates on the
+        val split (per fit), instead of the single fixed `readout_lag_bins`.
+        Encoding is done once per restart, so sweeping depth here is cheap.
     recurrent : bool
         If True, pass the per-bin features through a fixed leaky
         echo-state reservoir (recurrent hidden dynamics) before the
