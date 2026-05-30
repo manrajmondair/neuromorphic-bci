@@ -31,11 +31,11 @@ srun --gres=gpu:1 --cpus-per-task=16 \
     python scripts/run_trained_snn_grid.py \
       --processed-path data/processed/processed_mc_rtt.npz \
       --out-dir results/cluster/trained_snn_deep \
-      --k-histories 16 20 \
-      --taus 20 40 \
+      --k-histories 8 12 16 \
+      --taus 10 12 \
       --hidden-dims 256 512 \
       --stage1-seeds 0 \
       --stage2-seeds 0 1 2 \
       --stage2-budgets 1.0 0.5 0.25 0.1 \
-      --epochs 120 --patience 20 --n-boot 300
+      --epochs 150 --patience 25 --n-boot 300
   '
