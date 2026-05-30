@@ -31,7 +31,7 @@ SOURCES = [
     ("Ridge + deep history",    "json", "results/ridge/ridge_lag24_results.json",           "#2ca02c", "^"),
     ("Reservoir SNN",           "json", "results/snn/snn_results.json",                     "#9467bd", "s"),
     ("Trained SNN (deep)",      "csv",  "results/cluster/trained_snn_deep/results.csv",     "#ff7f0e", "P"),
-    ("Deeper SNN (recurrent)",  "csv",  "results/cluster/deeper_snn_deep/results.csv",      "#d62728", "D"),
+    ("Deeper SNN (2-layer LIF)", "csv",  "results/cluster/deeper_snn_deep/results.csv",      "#d62728", "D"),
 ]
 
 

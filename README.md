@@ -159,7 +159,10 @@ full budget — temporal context, not decoder class, carries the decode; (2) the
 neuromorphic SNNs are the **best** decoders, not only the most efficient — a
 trained LIF SNN whose readout sees a lag-stacked window of its per-bin hidden
 activity tops every event budget, with the fixed-encoder reservoir SNN just
-behind. Full per-model results + figure in [`results/best/`](results/best/).
+behind. A 2-layer / recurrent LIF (the *deeper SNN* capacity probe) does **not**
+improve on this — its best stack reaches only 0.621 and recurrence is worse —
+confirming the bottleneck is temporal context, not model capacity. Full
+per-model results + figure in [`results/best/`](results/best/).
 
 <p align="center">
   <img src="results/best/best_frontier.png" width="640"
