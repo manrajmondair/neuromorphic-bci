@@ -123,15 +123,24 @@ grid.
 
 ## Results
 
-Blocked CV, mean ± std across folds and seeds (full battery —
-sensitivity, Pareto, bin-size, channel-dropout — in
-[`results/cluster/summary.md`](results/cluster/summary.md)):
+Blocked CV (4-fold leave-one-block-out, multi-seed), mean ± std across folds
+and seeds, with every decoder held to a **matched ≈ 200 ms history window** for
+an apples-to-apples head-to-head (full battery — sensitivity, Pareto, bin-size,
+channel-dropout — in [`results/cluster/summary.md`](results/cluster/summary.md)):
 
 | Decoder | *f* = 1.00 | *f* = 0.50 | *f* = 0.25 | *f* = 0.10 |
 |---|---|---|---|---|
 | Ridge (counts) | 0.168 ± 0.013 | 0.103 ± 0.020 | 0.054 ± 0.007 | 0.019 ± 0.005 |
 | Ridge + 4-bin history | 0.509 ± 0.020 | 0.406 ± 0.021 | 0.253 ± 0.023 | 0.110 ± 0.013 |
 | Trained SNN (BPTT) | 0.542 ± 0.021 | 0.407 ± 0.036 | 0.250 ± 0.034 | 0.089 ± 0.022 |
+| Reservoir SNN | 0.521 ± 0.022 | 0.392 ± 0.016 | 0.248 ± 0.020 | 0.105 ± 0.016 |
+| Deeper SNN (2-layer) | 0.514 ± 0.021 | 0.381 ± 0.031 | 0.231 ± 0.036 | 0.082 ± 0.025 |
+
+At a matched 200 ms window the history-using decoders sit together
+(R² ≈ 0.51–0.54 at *f* = 1.0) — depth and the SNN encoders neither help nor
+hurt here. The gaps open up only when each decoder is given its own
+best (deeper) context window; see [Best configuration](#best-configuration-of-every-decoder)
+below, where the spiking decoders pull ahead.
 
 Permutation test: decode is significant at *f* ≥ 0.25 (*p* ≈ 0.001 at *f* =
 1.0 and 0.5, *p* ≈ 0.04 at 0.25) and not significant at *f* = 0.10.

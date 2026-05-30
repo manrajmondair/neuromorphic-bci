@@ -39,6 +39,7 @@ from src.data.preprocess import load_processed
 from src.evaluation.metrics import velocity_r2, velocity_r2_bootstrap
 from src.features.event_budget import restrict_to_event_budget
 from src.features.spike_counts import counts_from_events, stack_lag_features
+from src.models.deeper_snn import DeeperTrainedSNN
 from src.models.ridge_decoder import DEFAULT_ALPHAS, RidgeDecoder
 from src.models.snn_decoder import SparseLatencySNN
 from src.models.trained_snn import TrainedLatencySNN
@@ -120,6 +121,22 @@ def _fit_reservoir_snn(et, en, velocity, train_idx, val_idx, test_idx,
     return best[1], best[2], best[3]
 
 
+def _fit_deeper_snn(et, en, velocity, train_idx, val_idx, test_idx,
+                    num_neurons, bin_size_ms, hidden_dims, readout_lag, tau_ms,
+                    threshold, epochs, patience, seed):
+    """Multi-layer LIF with a lag-stacked readout, fit per fold at a matched
+    history window (readout_lag bins). Feedforward — recurrence destabilises."""
+    from src.utils.seed import set_global_seed
+    set_global_seed(seed)
+    snn = DeeperTrainedSNN(
+        num_neurons=num_neurons, hidden_dims=tuple(hidden_dims), tau_ms=tau_ms,
+        threshold=threshold, bin_size_ms=bin_size_ms, readout_lag=readout_lag,
+        recurrent=False, epochs=epochs, patience=patience, seed=seed,
+    ).fit(et, en, velocity, train_idx, val_idx)
+    split_starts = (int(train_idx.min()), int(val_idx.min()), int(test_idx.min()))
+    return snn.predict(et, en, test_idx, split_starts=split_starts), snn.best_val_r2
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--processed-path", type=Path, default=Path("data/processed/processed_mc_rtt.npz"))
@@ -151,6 +168,14 @@ def main() -> int:
                    help="reservoir readout history depth (default 4 ≈ 200 ms, matched to ridge_lag4)")
     p.add_argument("--reservoir-thresholds", type=float, nargs="+", default=[0.05, 0.20])
     p.add_argument("--reservoir-alphas", type=float, nargs="+", default=[1e3, 1e4, 3e4, 1e5])
+    p.add_argument("--deeper-snn", action="store_true",
+                   help="also fit the multi-layer (deeper) LIF SNN with a lag-stacked readout")
+    p.add_argument("--deeper-hidden-dims", type=int, nargs="+", default=[256, 128])
+    p.add_argument("--deeper-readout-lag", type=int, default=4,
+                   help="deeper-SNN readout history depth (default 4 ≈ 200 ms, matched window)")
+    p.add_argument("--deeper-tau-ms", type=float, default=10.0)
+    p.add_argument("--deeper-threshold", type=float, default=0.30)
+    p.add_argument("--deeper-epochs", type=int, default=100)
     p.add_argument("--merge-into", type=Path, default=None,
                    help="merge the computed rows into an existing block_cv.json (replacing rows "
                         "for the same models) instead of writing a fresh file")
@@ -242,6 +267,30 @@ def main() -> int:
                     logger.info("reservoir_snn f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f] thr=%g a=%g",
                                 f, fold["fold"], seed, r2["r2_joint"],
                                 r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"], r_thr, r_alpha)
+
+                if args.deeper_snn:
+                    y_pred, val_r2 = _fit_deeper_snn(
+                        et, en, y, train_idx, val_idx, test_idx,
+                        num_neurons=num_neurons, bin_size_ms=bin_size_ms,
+                        hidden_dims=args.deeper_hidden_dims, readout_lag=args.deeper_readout_lag,
+                        tau_ms=args.deeper_tau_ms, threshold=args.deeper_threshold,
+                        epochs=args.deeper_epochs, patience=20, seed=seed,
+                    )
+                    r2 = velocity_r2(y[test_idx], y_pred)
+                    r2_boot = velocity_r2_bootstrap(y[test_idx], y_pred, n_boot=args.n_boot, seed=seed)
+                    rows.append({
+                        "model": "deeper_snn", "event_budget": float(f),
+                        "fold": int(fold["fold"]), "seed": int(seed),
+                        "train_size": int(train_idx.size), "test_size": int(test_idx.size),
+                        "r2_vx": r2["r2_vx"], "r2_vy": r2["r2_vy"], "r2_joint": r2["r2_joint"],
+                        "r2_joint_ci_lo": r2_boot["r2_joint_ci_lo"],
+                        "r2_joint_ci_hi": r2_boot["r2_joint_ci_hi"],
+                        "best_val_r2": float(val_r2), "lag_bins": int(args.deeper_readout_lag),
+                        "n_boot": int(args.n_boot),
+                    })
+                    logger.info("deeper_snn f=%.2f fold=%d seed=%d  r2=%+.4f [%.4f, %.4f] val=%+.4f",
+                                f, fold["fold"], seed, r2["r2_joint"],
+                                r2_boot["r2_joint_ci_lo"], r2_boot["r2_joint_ci_hi"], val_r2)
 
                 if not args.skip_snn:
                     y_pred, val_r2 = _fit_snn(

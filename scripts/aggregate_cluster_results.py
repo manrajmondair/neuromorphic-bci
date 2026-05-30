@@ -89,6 +89,7 @@ def _plot_frontier_with_errors(block_cv_summary: dict, out_path: Path) -> None:
         "ridge_lag4": {"color": "#2ca02c", "marker": "^", "label": "Ridge + 4-bin history"},
         "trained_snn": {"color": "#ff7f0e", "marker": "P", "label": "Trained SNN (BPTT)"},
         "reservoir_snn": {"color": "#9467bd", "marker": "s", "label": "Reservoir SNN (+ 4-bin history)"},
+        "deeper_snn": {"color": "#d62728", "marker": "D", "label": "Deeper SNN (2-layer, + 4-bin history)"},
     }
     fig, ax = plt.subplots(figsize=(7.5, 5.5))
 
@@ -129,7 +130,7 @@ def _format_table(block_cv_summary: dict) -> str:
     )
     lines = ["| Model |" + "".join(f" f={b:.2f} |" for b in budgets)]
     lines.append("|---|" + "---|" * len(budgets))
-    for model in ("ridge", "ridge_lag4", "trained_snn", "reservoir_snn"):
+    for model in ("ridge", "ridge_lag4", "trained_snn", "reservoir_snn", "deeper_snn"):
         if model not in block_cv_summary:
             continue
         cells = []
