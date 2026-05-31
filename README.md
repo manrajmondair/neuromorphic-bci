@@ -36,14 +36,14 @@ nanojoules per prediction on Loihi-2-class neuromorphic hardware, orders of
 magnitude below a dense GPU/CPU readout.
 
 <p align="center">
-  <img src="results/cluster/figures/headline_frontier_multiseed.png" width="640"
-       alt="Velocity R² versus sparse event budget for every decoder at a matched history window."><br>
-  <em>Decoder accuracy vs. event budget at a matched ≈ 200 ms history window
-  (mean ± std across blocked-CV folds and seeds). The history-using decoders —
-  lag-augmented ridge, trained SNN, reservoir SNN, deeper SNN — track together at
-  every budget, all far above the memoryless count decoder. Each decoder's own
-  deeper-context optimum, where the SNNs pull ahead, is in
-  <a href="#best-configuration-of-every-decoder">Best configuration</a>.</em>
+  <img src="results/figures/fig1_frontier.png" width="760"
+       alt="Velocity decode R² versus sparse event budget, matched-window and best-config."><br>
+  <em><b>Decoder accuracy vs. sparse event budget.</b> (a) At a matched ≈ 200 ms
+  history window (blocked CV, mean ± std across folds and seeds) every
+  history-using decoder coincides — temporal context, not decoder class, sets the
+  accuracy. (b) Given each decoder its own validation-selected context window, the
+  spiking decoders pull ahead, the trained LIF SNN leading at every budget. Both
+  far exceed the memoryless count decoder.</em>
 </p>
 
 ## Key findings
@@ -76,6 +76,15 @@ GPFA / SLDS baselines on the NLB MC_RTT leaderboard (0.49–0.58), while our bes
 deep-context decoder (trained SNN, R² = 0.68 at *f* = 1.0) reaches the
 latent-dynamics tier that tops the benchmark (Transformer NDT 0.62, AutoLFADS
 0.67, MINT 0.69) — see [`results/benchmark/nlb_mc_rtt_published.json`](results/benchmark/nlb_mc_rtt_published.json).
+
+<p align="center">
+  <img src="results/figures/fig2_context_depth.png" width="500"
+       alt="Velocity decode R² versus history-window length for every decoder."><br>
+  <em><b>Temporal context is the dominant lever.</b> At full budget, every
+  history-capable decoder climbs from near-chance (memoryless) to R² ≈ 0.6–0.68
+  as the readout sees more of the recent past, converging by ≈ 400 ms. The
+  decoder family barely matters once context is matched.</em>
+</p>
 
 ## Background and research question
 
@@ -159,6 +168,14 @@ below, where the spiking decoders pull ahead.
 Permutation test: decode is significant at *f* ≥ 0.25 (*p* ≈ 0.001 at *f* =
 1.0 and 0.5, *p* ≈ 0.04 at 0.25) and not significant at *f* = 0.10.
 
+<p align="center">
+  <img src="results/figures/fig6_cv_robustness.png" width="500"
+       alt="Per-fold blocked-CV R² for each decoder across the recording."><br>
+  <em><b>Stable across the recording.</b> Per-fold R² (leave-one-block-out CV, full
+  budget) holds across all four chronological quarters — the decode is not an
+  artifact of one split, and the decoder ordering is consistent throughout.</em>
+</p>
+
 ### Best configuration of every decoder
 
 The table above matches all decoders at a 4-bin (≈ 200 ms) history window for a
@@ -189,12 +206,30 @@ confirming the bottleneck is temporal context, not model capacity. Full
 per-model results + figure in [`results/best/`](results/best/).
 
 <p align="center">
-  <img src="results/best/best_frontier.png" width="640"
-       alt="Best configuration of every decoder vs sparse event budget."><br>
-  <em>Each decoder at its own validation-selected optimum. With ≈ 1 s of temporal
-  context the linear, reservoir-SNN, and trained-SNN decoders converge near
-  R² ≈ 0.6–0.68 at full budget; the trained LIF SNN with a lag-stacked readout
-  leads at every budget.</em>
+  <img src="results/figures/fig3_snn_context.png" width="500"
+       alt="Trained-SNN R² vs history depth: input history saturates, readout history scales."><br>
+  <em><b>Why the trained SNN must see history at the readout.</b> Piling history
+  onto the LIF <em>input</em> blurs it through a single leaky state and saturates
+  past ≈ 8 bins; lag-stacking the trained per-bin features at the <em>readout</em>
+  instead keeps the encoder on short, trainable sequences and scales to R² = 0.68.</em>
+</p>
+
+<p align="center">
+  <img src="results/figures/fig5_reconstruction.png" width="780"
+       alt="Best decoder velocity and cursor-path reconstruction."><br>
+  <em><b>Best-decoder reconstruction (trained SNN, full budget).</b> (a) Decoded
+  vs. measured cursor velocity over a held-out segment; (b) the integrated 2-D
+  cursor path. Velocity is tracked tightly ($R^2$ = 0.68); position drifts slowly
+  as small velocity errors accumulate, as expected of a velocity decoder.</em>
+</p>
+
+<p align="center">
+  <img src="results/figures/fig4_energy_accuracy.png" width="560"
+       alt="Accuracy vs energy per prediction across hardware targets."><br>
+  <em><b>The neuromorphic payoff.</b> The same trained-SNN models, costed on four
+  hardware targets: event-driven neuromorphic chips (Loihi-2, NorthPole) reach the
+  same accuracy at ~10–500× lower arithmetic energy per prediction than a dense
+  CPU readout.</em>
 </p>
 
 ## Repository layout
@@ -230,10 +265,19 @@ python scripts/run_ridge.py --lag-bins 24 \
     --results-json results/ridge/ridge_lag24_results.json    # deep-history linear baseline
 python scripts/run_snn.py                                    # reservoir SNN (per-budget lag) + shuffle control
 python scripts/run_trained_snn_grid.py                       # trained SNN readout-lag sweep (best decoder)
-python scripts/aggregate_best_models.py                      # unified best-of-every-model table + figure
+python scripts/run_history_sweeps.py                         # R² vs history-depth sweeps (fig 2/3 data)
+python scripts/aggregate_best_models.py                      # best-of-every-model table + figure
 python scripts/run_efficiency_analysis.py                    # MAC / energy accounting
-python scripts/generate_final_figures.py                     # figures at dpi=300
+python scripts/generate_paper_figures.py                     # publication figure set (results/figures/fig1–6)
+python scripts/analyze_trained_snn_weights.py                # supplementary: learned weights + tuning
+python scripts/plot_hidden_dim_scaling.py                    # supplementary: capacity scaling
+python scripts/run_failure_analysis.py                       # supplementary: failure modes vs speed
+python scripts/run_online_streaming.py                       # supplementary: online latency + drift
 ```
+
+All figures use one shared style (`src/evaluation/figstyle.py`) and are written
+to `results/figures/` as both 300-dpi PNG and vector PDF — `fig1`–`fig6` are the
+paper figures, `supp_*` the supplementary panels.
 
 Every experiment knob lives in the per-script `argparse` interface
 (`--help`). The multi-seed grids, permutation test, and energy Pareto were

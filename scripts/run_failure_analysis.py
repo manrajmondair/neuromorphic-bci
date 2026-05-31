@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src.evaluation.figstyle import apply_style, canonical, color_for, label_for, panel, save_fig
+
 LOG_FORMAT = "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s"
 logger = logging.getLogger("run_failure_analysis")
 
@@ -71,12 +73,13 @@ def _conditional_rmse_relative(y_true, y_pred, mask, global_std):
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", type=Path, default=Path("results/failure_analysis"))
-    p.add_argument("--fig-path", type=Path, default=Path("results/figures/failure_modes.png"))
+    p.add_argument("--fig-path", type=Path, default=Path("results/figures/supp_failure_modes.png"))
     p.add_argument("--n-bins", type=int, default=4, help="speed bins for conditional R^2")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
 
     logging.basicConfig(level=args.log_level, format=LOG_FORMAT, stream=sys.stdout)
+    apply_style()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.fig_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -139,31 +142,30 @@ def main() -> int:
         )
         rows.append(out)
 
-    # Plot: per-quartile R^2 for each model.
+    # Plot: per-quartile R^2 + relative RMSE for each model, canonical colours.
     if summary_by_model:
-        fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-        for model, out in summary_by_model.items():
+        fig, axes = plt.subplots(1, 2, figsize=(9.2, 4.0))
+        order = sorted(summary_by_model, key=lambda m: 0 if canonical(m) == "shuffle" else 1)
+        for model in order:
+            out = summary_by_model[model]
             xs = [(r["speed_lo"] + r["speed_hi"]) / 2 for r in out["per_quartile"]]
             ys = [r["r2_global_baseline"] for r in out["per_quartile"]]
-            axes[0].plot(xs, ys, marker="o", label=model)
             rs = [r["rmse_relative_to_global_std"] for r in out["per_quartile"]]
-            axes[1].plot(xs, rs, marker="o", label=model)
-        axes[0].set_xlabel("Cursor speed (quartile centre)")
-        axes[0].set_ylabel("R^2 vs. global-mean baseline")
+            kw = dict(marker="o", color=color_for(model), label=label_for(model))
+            if canonical(model) == "shuffle":
+                kw["linestyle"] = "--"
+            axes[0].plot(xs, ys, **kw)
+            axes[1].plot(xs, rs, **kw)
+        axes[0].set_xlabel("Cursor speed  (quartile centre, mm/s)")
+        axes[0].set_ylabel("$R^2$ vs. global-mean baseline")
         axes[0].axhline(0, color="black", linewidth=0.5, alpha=0.4)
-        axes[0].grid(True, alpha=0.3)
-        axes[0].legend(loc="best", fontsize=9)
-        axes[0].set_title("Variance explained in each speed quartile")
-
-        axes[1].set_xlabel("Cursor speed (quartile centre)")
+        axes[0].legend(loc="lower left", fontsize=8)
+        panel(axes[0], "a")
+        axes[1].set_xlabel("Cursor speed  (quartile centre, mm/s)")
         axes[1].set_ylabel("RMSE / global std")
-        axes[1].grid(True, alpha=0.3)
-        axes[1].legend(loc="best", fontsize=9)
-        axes[1].set_title("Relative RMSE in each speed quartile")
-        fig.suptitle("Failure-mode analysis: decoder performance vs cursor speed", y=1.02)
+        panel(axes[1], "b")
         fig.tight_layout()
-        fig.savefig(args.fig_path, dpi=300, bbox_inches="tight")
-        plt.close(fig)
+        save_fig(fig, args.fig_path.with_suffix(""))
         logger.info("wrote %s", args.fig_path)
 
     return 0

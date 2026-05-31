@@ -83,42 +83,34 @@ def _aggregate_block_cv(rows: list[dict]) -> dict:
 
 
 def _plot_frontier_with_errors(block_cv_summary: dict, out_path: Path) -> None:
-    """Headline R² vs event budget, one curve per model, with std-across-seeds error bars."""
-    style = {
-        "ridge": {"color": "#1f77b4", "marker": "o", "label": "Ridge (single-bin counts)"},
-        "ridge_lag4": {"color": "#2ca02c", "marker": "^", "label": "Ridge + 4-bin history"},
-        "trained_snn": {"color": "#ff7f0e", "marker": "P", "label": "Trained SNN (BPTT)"},
-        "reservoir_snn": {"color": "#9467bd", "marker": "s", "label": "Reservoir SNN (+ 4-bin history)"},
-        "deeper_snn": {"color": "#d62728", "marker": "D", "label": "Deeper SNN (2-layer, + 4-bin history)"},
-    }
-    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    """Headline R² vs event budget, one curve per model (matched window, block CV).
 
-    for model, per_budget in block_cv_summary.items():
-        if model not in style:
+    Uses the shared publication style so it matches results/figures/fig1.
+    """
+    from src.evaluation.figstyle import apply_style, canonical, style_for
+    apply_style()
+    order = ["ridge", "ridge_lag4", "trained_snn", "reservoir_snn", "deeper_snn"]
+    fig, ax = plt.subplots(figsize=(6.2, 4.4))
+    for model in order:
+        per_budget = block_cv_summary.get(model)
+        if not per_budget:
             continue
         budgets_sorted = sorted(per_budget.keys(), reverse=True)
-        means = []
-        stds = []
-        for b in budgets_sorted:
-            cell = per_budget[b]
-            means.append(cell["mean_across_folds"])
-            stds.append(cell["std_across_folds"])
-        ax.errorbar(
-            budgets_sorted, means, yerr=stds,
-            **style[model], capsize=4, linewidth=2, markersize=8,
-        )
-
-    ax.set_xlabel("Event budget  f  (fraction of earliest spike events retained)")
-    ax.set_ylabel("Velocity R²  (mean ± std across folds, multi-seed)")
-    ax.set_title("Decoder accuracy vs sparse event budget — block CV grid")
-    ax.set_xlim(1.05, -0.02)
-    ax.set_ylim(-0.05, 0.65)
-    ax.axhline(0.0, color="black", linewidth=0.5, alpha=0.4)
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="upper right", framealpha=0.92)
+        means = np.array([per_budget[b]["mean_across_folds"] for b in budgets_sorted])
+        stds = np.array([per_budget[b]["std_across_folds"] for b in budgets_sorted])
+        kw = style_for(canonical(model))
+        ax.fill_between(budgets_sorted, means - stds, means + stds,
+                        color=kw["color"], alpha=0.12, zorder=kw.get("zorder", 2) - 1)
+        ax.plot(budgets_sorted, means, **kw)
+    ax.set_xlabel("Event budget  $f$  (fraction of earliest spikes kept)")
+    ax.set_ylabel("Velocity decode  $R^2$  (matched 200 ms window)")
+    ax.set_xlim(1.05, 0.03); ax.set_xticks([1.0, 0.75, 0.5, 0.25, 0.1])
+    ax.set_ylim(-0.05, 0.62)
+    ax.legend(loc="upper right")
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    fig.savefig(out_path)
+    fig.savefig(out_path.with_suffix(".pdf"))
     plt.close(fig)
     logger.info("wrote %s", out_path)
 

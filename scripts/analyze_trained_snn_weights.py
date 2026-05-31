@@ -44,6 +44,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.data.preprocess import load_processed
+from src.evaluation.figstyle import apply_style, color_for, save_fig
 from src.features.event_budget import apply_event_budget
 from src.features.spike_counts import counts_from_events
 from src.models.trained_snn import TrainedLatencySNN
@@ -78,9 +79,9 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--processed-path", type=Path, default=Path("data/processed/processed_mc_rtt.npz"))
     p.add_argument("--out-fig-heatmap", type=Path,
-                   default=Path("results/figures/trained_snn_weight_heatmap.png"))
+                   default=Path("results/figures/supp_weight_heatmap.png"))
     p.add_argument("--out-fig-pd", type=Path,
-                   default=Path("results/figures/trained_snn_pref_directions.png"))
+                   default=Path("results/figures/supp_pref_directions.png"))
     p.add_argument("--out-analysis", type=Path,
                    default=Path("results/snn_weights/analysis.json"))
     p.add_argument("--hidden-dim", type=int, default=128)
@@ -93,6 +94,7 @@ def main() -> int:
     args = p.parse_args()
 
     logging.basicConfig(level=args.log_level, format=LOG_FORMAT, stream=sys.stdout)
+    apply_style()
     args.out_fig_heatmap.parent.mkdir(parents=True, exist_ok=True)
     args.out_analysis.parent.mkdir(parents=True, exist_ok=True)
 
@@ -133,30 +135,29 @@ def main() -> int:
     hid_order = np.argsort(hidden_pd)
     W_sorted = W[np.ix_(hid_order, in_order)]
     vmax = float(np.percentile(np.abs(W_sorted), 99))
-    fig, ax = plt.subplots(figsize=(9, 6))
+    fig, ax = plt.subplots(figsize=(7.0, 5.2))
+    ax.grid(False)
     im = ax.imshow(W_sorted, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
-    ax.set_xlabel(f"Input neuron (sorted by preferred direction, N={W.shape[1]})")
-    ax.set_ylabel(f"Hidden unit (sorted by readout direction, H={W.shape[0]})")
-    ax.set_title("Trained SNN input projection W (rows + cols sorted by preferred direction)")
-    fig.colorbar(im, ax=ax, label="weight (signed)")
+    ax.set_xlabel(f"Input neuron  (sorted by preferred direction, $N$ = {W.shape[1]})")
+    ax.set_ylabel(f"Hidden unit  (sorted by readout direction, $H$ = {W.shape[0]})")
+    fig.colorbar(im, ax=ax, label="input weight (signed)", fraction=0.046, pad=0.04)
     fig.tight_layout()
-    fig.savefig(args.out_fig_heatmap, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, args.out_fig_heatmap.with_suffix(""))
     logger.info("wrote %s", args.out_fig_heatmap)
 
     # --- figure 2: PD polar histograms ---
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5), subplot_kw={"projection": "polar"})
+    fig, axes = plt.subplots(1, 2, figsize=(8.4, 4.2), subplot_kw={"projection": "polar"})
     n_bins = 24
-    axes[0].hist(input_pd, bins=n_bins, weights=input_depth, alpha=0.85,
-                 color="#1f77b4", edgecolor="white")
-    axes[0].set_title(f"Input neurons (N={W.shape[1]})\nweighted by tuning depth")
-    axes[1].hist(hidden_pd, bins=n_bins, alpha=0.85, color="#ff7f0e", edgecolor="white")
-    axes[1].set_title(f"Hidden units (H={W.shape[0]})\nW_out direction")
-    fig.suptitle("Preferred-direction distributions: input neurons vs trained SNN hidden units",
-                 y=1.02)
+    axes[0].hist(input_pd, bins=n_bins, weights=input_depth, alpha=0.9,
+                 color=color_for("ridge_hist"), edgecolor="white", linewidth=0.4)
+    axes[0].set_title(f"Input neurons ($N$ = {W.shape[1]})\nweighted by tuning depth", fontsize=10)
+    axes[1].hist(hidden_pd, bins=n_bins, alpha=0.9, color=color_for("trained_snn"),
+                 edgecolor="white", linewidth=0.4)
+    axes[1].set_title(f"Trained-SNN hidden units ($H$ = {W.shape[0]})\nreadout direction", fontsize=10)
+    for a in axes:
+        a.set_theta_zero_location("E"); a.grid(True, alpha=0.4)
     fig.tight_layout()
-    fig.savefig(args.out_fig_pd, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, args.out_fig_pd.with_suffix(""))
     logger.info("wrote %s", args.out_fig_pd)
 
     # --- numeric summary ---

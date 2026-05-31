@@ -34,6 +34,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.data.preprocess import load_processed
+from src.evaluation.figstyle import apply_style, color_for, label_for, panel, save_fig
 from src.evaluation.metrics import velocity_r2
 from src.features.causal_window import truncate_to_window
 from src.features.spike_counts import counts_from_events, stack_lag_features
@@ -112,7 +113,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--processed-path", type=Path, default=Path("data/processed/processed_mc_rtt.npz"))
     p.add_argument("--out-dir", type=Path, default=Path("results/streaming"))
-    p.add_argument("--fig-path", type=Path, default=Path("results/figures/streaming_drift.png"))
+    p.add_argument("--fig-path", type=Path, default=Path("results/figures/supp_streaming_drift.png"))
     p.add_argument("--window-ms", type=float, default=50.0,
                    help="causal lookahead per bin (defaults to full bin)")
     p.add_argument("--seed", type=int, default=0)
@@ -125,6 +126,7 @@ def main() -> int:
     args = p.parse_args()
 
     logging.basicConfig(level=args.log_level, format=LOG_FORMAT, stream=sys.stdout)
+    apply_style()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.fig_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -205,23 +207,21 @@ def main() -> int:
             row["p95_latency_ms"], row["final_drift"],
         )
         t_axis = np.arange(preds.shape[0]) * bin_size_s
-        axes[0].plot(t_axis, drift, label=f"{model} (final={row['final_drift']:.1f})")
-        axes[1].hist(lat * 1000, bins=40, alpha=0.6, label=f"{model}")
+        c = color_for(model)
+        axes[0].plot(t_axis, drift, color=c, label=f"{label_for(model)}")
+        axes[1].hist(lat * 1000, bins=40, alpha=0.55, color=c, label=label_for(model))
 
-    axes[0].set_xlabel("Time (s)")
-    axes[0].set_ylabel("Cumulative position drift")
-    axes[0].grid(True, alpha=0.3)
-    axes[0].legend(loc="best")
-    axes[0].set_title(f"Streaming drift (window={args.window_ms:.0f} ms)")
+    axes[0].set_xlabel("Time  (s)")
+    axes[0].set_ylabel("Cumulative position drift  (mm)")
+    axes[0].legend(loc="upper left")
+    panel(axes[0], "a")
 
-    axes[1].set_xlabel("Per-bin inference latency (ms)")
+    axes[1].set_xlabel("Per-bin inference latency  (ms)")
     axes[1].set_ylabel("Bin count")
-    axes[1].grid(True, alpha=0.3)
-    axes[1].legend(loc="best")
-    axes[1].set_title("Per-bin inference latency distribution")
+    axes[1].legend(loc="upper right")
+    panel(axes[1], "b")
     fig.tight_layout()
-    fig.savefig(args.fig_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, args.fig_path.with_suffix(""))
     logger.info("wrote %s", args.fig_path)
 
     summary_path = args.out_dir / "summary.json"
