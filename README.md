@@ -219,7 +219,7 @@ per-model results + figure in [`results/best/`](results/best/).
        alt="Best decoder velocity and cursor-path reconstruction."><br>
   <em><b>Best-decoder reconstruction (trained SNN, full budget).</b> (a) Decoded
   vs. measured cursor velocity over a held-out segment; (b) the integrated 2-D
-  cursor path. Velocity is tracked tightly ($R^2$ = 0.68); position drifts slowly
+  cursor path. Velocity is tracked tightly (R² = 0.68); position drifts slowly
   as small velocity errors accumulate, as expected of a velocity decoder.</em>
 </p>
 
