@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "neuromorphic-bci"
 version = "0.0.1"
-description = "Sparse event-based neuromorphic decoding for implantable BCI (EE207 project)"
+description = "Sparse event-driven neuromorphic decoders for implantable BCIs"
 requires-python = ">=3.10"
 readme = "README.md"
 

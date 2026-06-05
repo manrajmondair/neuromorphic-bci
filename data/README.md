@@ -28,3 +28,4 @@ python scripts/download_mc_rtt.py && python scripts/preprocess_mc_rtt.py
 
 After that, both ridge and SNN training scripts work against
 `data/processed/processed_mc_rtt.npz`.
+

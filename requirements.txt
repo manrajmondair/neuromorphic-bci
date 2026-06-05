@@ -21,3 +21,4 @@ dandi>=0.59
 
 # Tests (smoke + invariant checks under tests/).
 pytest>=8.0
+

@@ -80,3 +80,4 @@ sshare -u $USER       # remaining GPU-hour budget
 ```
 
 The three real jobs together consume roughly **2–3 H100 hours**. Smoke test consumes ~0.3 H100 hours. Check `sshare` before submitting a sweep.
+

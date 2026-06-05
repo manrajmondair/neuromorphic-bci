@@ -59,3 +59,4 @@ report/*.fls
 
 # Cluster operator runtime artifacts (job-id sentinel etc.)
 cluster/.in_flight_jobs
+
